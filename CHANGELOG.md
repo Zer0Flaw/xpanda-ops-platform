@@ -1834,6 +1834,87 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ---
 
+## Logistics (v2)
+
+- **P435 — logistics v2 migration, unit 1: BOL core port (`logistics/bol-shared.js` →
+  `cutting-pilot/src/lib/bolShared.ts`) + parity harness (next-platform-agent §9a, isolated
+  `v2-logistics` worktree/branch — not merged to `main`, not deployed by this prompt).** Ports
+  ONLY the headless BOL PDF coordinate/render engine — `bol-compose.js` (shared BOL engine) and
+  `bol-editor.js` are UI and are rebuilt as React with the shipment dashboard in a later unit; both
+  left untouched. Added `@pdf-lib/fontkit@1.1.1` and `qrcode-generator@1.4.4` to
+  `cutting-pilot/package.json` (both resolved to those exact versions, matching legacy's CDN
+  pins). `bolShared.ts` transcribes every COORDS entry, `drawText` call, page dimension, font
+  size, and the qrcode + fontkit call sequence verbatim from `bol-shared.js` — same numbers, same
+  drawing order, nothing "improved." Structural-only changes (none alter a drawn pixel, all
+  documented in the file's own header comment): DOM/download glue lifted out (`generatePdf` is a
+  pure function returning PDF bytes; the window-open/blob-revoke helper `openPdf` and the DOM
+  confirm-dialog `confirmNoBolNumber` are NOT ported — both are consumer-UI glue for unit 2 to
+  reimplement in React); the BOL template PDF and FRSCRIPT.TTF cursive font are now supplied by
+  the caller as bytes (`opts.templateBytes`/`opts.scriptFontBytes`) instead of being `fetch`'d
+  inside the lib by URL, since a pure module can't assume a browser/DOM environment (the parity
+  harness runs in Node) — `TEMPLATE_ASSET_PATH_BY_COPY_TYPE`/`SCRIPT_FONT_ASSET_PATH` preserve the
+  exact legacy asset paths as data so a future browser caller doesn't rediscover them; the QR
+  tracking URL's origin comes from a new `opts.trackingBaseUrl` (replaces `window.location.origin`,
+  which doesn't exist in a pure module — only affects the QR's encoded (non-visible) data, not any
+  drawn text); `window.fontkit`'s CDN-global truthiness check collapsed to a real
+  `@pdf-lib/fontkit` import; extracted `COMMODITY_TIERS`, `formatBolDate`, and
+  `isLikelyFontBytes` (the FRSCRIPT.TTF magic-byte sniff that guards against embedding a 200-OK
+  app-shell HTML response as a font) from inline closures to named exports so the self-check can
+  assert on them without a real pdf-lib font. **Prompt drift caught, not invented**: the prompt's
+  Step 2 said to "preserve the `load_number`-zero-padded-vs-`bol_number` handling exactly as
+  legacy does it" in `bol-shared.js` — grepped the whole file, that logic doesn't exist there; it's
+  the multi-trailer invoice-number-suffix auto-fill in `bol-compose.js` (`~line 457`,
+  `bol.load_number`/`invNumber` `padStart`), out of this unit's scope (unit 2 owns
+  `bol-compose.js`). Noted for unit 2, nothing invented into `bolShared.ts`. New
+  `bolShared.selfcheck.ts` (mirrors `bagLabels.selfcheck.ts`'s shape, pure, no PDF render): 22
+  assertions — COORDS/PAGE/COMMODITY_TIERS deep-equal against numbers hard-coded straight from
+  `bol-shared.js`, FIELD_MAP structural + same-object coord references, `buildShipToLines`/
+  `formatBolDate` cases, and `wrapText`/`pickCommodityTier`'s tier cascade exercised via a
+  deterministic fake `WidthMeasurer` (real font-width pixel correctness is the parity harness's
+  job, not the self-check's) — all 22 pass. New `scripts/bol-parity.mjs` renders the same fixture
+  `logistics/bol-test.html`'s `DUMMY` object uses, through the real `BLANK_BOL_Xpanda.pdf` template
+  and `FRSCRIPT.TTF` (read straight off disk), to `cutting-pilot/bol-v2-sample.pdf` (gitignored) —
+  confirmed 1 page at 612×792 (US Letter). Runs directly via `node scripts/bol-parity.mjs`; no
+  build step needed (Node 22.6+/23.6+ strips `bolShared.ts`'s TypeScript syntax natively).
+  **Beyond the committed self-check/parity artifact, ran a one-off (uncommitted) output-equality
+  check**: loaded the real `logistics/bol-shared.js` in Node (`vm.runInThisContext` + shimmed
+  `window`/`PDFLib`/`qrcode`/`fetch` globals) side-by-side with the ported `generatePdf`, patched
+  `PDFPage.prototype.drawText`/`drawRectangle` at the shared pdf-lib prototype level to record
+  every call's text/x/y/size/font-name/color/maxWidth, and diffed the two call sequences
+  field-by-field across 5 cases: the baseline `DUMMY` fixture, one with `_overrides` (a `_pos`
+  delta plus array `shipTo`/`poNumber`), `siplast: true` (SKU-in-parens rewrite),
+  `copyType: 'customer'` (QR-suppressed branch), and a JSON-string `render_overrides` (the
+  DB-row hydration path) — **all 5 produced byte-identical draw-call sequences** (592-593 calls
+  each, exact match including the QR's individual drawn rectangles). This is real evidence the
+  port draws the same thing legacy does, not just that both happen to produce a valid PDF.
+  **Real upstream bug found and worked around locally, flagged for Steve — not fixed in the
+  repo**: a fresh `npm install` on Windows pulls a genuinely broken `@opennextjs/aws@3.4.0` — its
+  edge/middleware bundler plugin (`dist/plugins/edge.js`) embeds the absolute Windows build path
+  straight into a `require("<path>")` string with raw backslashes; any path segment starting with
+  `\x` followed by a non-hex letter (e.g. this repo's own `...\xpanda-ops-platform\...` /
+  `...\xpanda-v2-logistics\...`) is an invalid hex-escape sequence and hard-fails `npm run
+  cf-build` at the "Bundling middleware function" step with `ERR_PARSE_ARGS`-adjacent
+  `esbuild` syntax errors. Confirmed this is NOT caused by anything in this port (`bolShared.ts`/
+  selfcheck/parity script touch nothing in the build or middleware path): a synthetic reproduction
+  (`path.join`-ing the same absolute paths outside any build) threw the identical "Invalid
+  hexadecimal escape sequence" for BOTH this worktree's path and `main`'s existing
+  `cutting-pilot` path, and a byte-diff of `dist/plugins/edge.js` between the two installed
+  `node_modules` trees showed `main`'s copy already carries a one-line hand patch to this exact
+  line (`file.replace(/\\/g, '/')` before embedding) that this fresh worktree install didn't get.
+  That patch isn't tracked anywhere (`node_modules/` is gitignored, no `patch-package`/`patches/`
+  present) — meaning it silently vanishes on any fresh `npm install`/clean clone/CI run and has to
+  be manually reapplied; did NOT reinstall `main`'s `node_modules` to double-confirm, since that
+  would have discarded Steve's own working patched install. Applied the identical patch to this
+  worktree's local `node_modules` only (nothing committed) to unblock the build gate; **Steve
+  should adopt `patch-package` (or equivalent) so this survives a clean install** — logged to
+  `BACKLOG.md`. Not a Windows-only risk in practice for deploys: the GitHub Actions pipeline
+  builds on Linux, where `path.join` never produces a backslash, so `main`'s CI/CD deploys have
+  never hit this. `npx tsc --noEmit` and `npm run cf-build` (patched locally) both green. **No D1
+  migration required or created by this unit** — pure lib + its checks, no API route, no DB
+  read/write, no R2 write, no nav link, no middleware change.
+
+---
+
 ## Database / API
 
 - **P422 follow-up — pill-driven status advance now also syncs the linked shipment

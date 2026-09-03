@@ -210,7 +210,14 @@
 
 ---
 
-## Logistics
+## Logistics (v2)
+
+- [x] P435 — unit 1: BOL core port (`logistics/bol-shared.js` → `cutting-pilot/src/lib/bolShared.ts`) + structural self-check + visual parity harness. Isolated `v2-logistics` worktree/branch, not merged/deployed. See `CHANGELOG.md` for full detail.
+- [ ] **Unit 2 — shipment dashboard port + `bol-compose`/`bol-editor` rebuilt as React.** Ports `logistics/index.html`'s shipment tracking dashboard and rebuilds `bol-compose.js` (shared BOL engine UI: form, overrides, multi-trailer compose) + `bol-editor.js` (drag-to-reposition field editor, consumes `FIELD_MAP`/`PAGE` from unit 1) against the unit-1 `bolShared.ts` engine. Also fold in the generate→view / trailer-number fix noted in earlier logistics work. Picks up the DOM/download glue unit 1 deliberately left out of `bolShared.ts` (`openPdf`'s window-open/blob-revoke, `confirmNoBolNumber`'s confirm dialog — reimplement as React) and resolves template/font bytes for `generatePdf`'s `templateBytes`/`scriptFontBytes` params (fetch by `TEMPLATE_ASSET_PATH_BY_COPY_TYPE`/`SCRIPT_FONT_ASSET_PATH`, sniff the font via `isLikelyFontBytes` before trusting it). Also owns the `load_number`-zero-padded-vs-`bol_number` invoice-suffix auto-fill logic (lives in legacy `bol-compose.js` `~line 457`, NOT in `bol-shared.js` — P435 confirmed this by grep; a P435 authoring note pointed at the wrong file).
+- [ ] **Unit 3 — load builder port + packing-logic rework.** Ports `logistics/load-builder.html` (trailer load planning, auto-pack algorithm, saved loads, BOL generation via the unit-1/2 engine).
+- [ ] **Unit 4 — loading dashboard port.** Ports `logistics/loading.html` (dock bay assignments, trailer numbers, loading status, photo capture).
+- [ ] **Standing parity rule while legacy and v2 coexist**: any change to BOL rendering must be mirrored across BOTH `logistics/bol-shared.js` and `cutting-pilot/src/lib/bolShared.ts` until legacy is archived.
+- [ ] **P435 finding — adopt `patch-package` (or equivalent) for `cutting-pilot`.** The local `main` `node_modules` carries an uncommitted, undocumented hand patch to `@opennextjs/aws`'s `dist/plugins/edge.js` (`file.replace(/\\/g, '/')` before embedding an absolute path into a generated `require(...)` string) that fixes a real upstream bug: any Windows build path containing `\x` followed by a non-hex letter (e.g. this repo's own `...\xpanda-...` directory name) is an invalid hex-escape and hard-fails `npm run cf-build`'s "Bundling middleware function" step. Because `node_modules/` is gitignored, this patch isn't captured anywhere and silently vanishes on a fresh `npm install`/clean clone — confirmed by reproducing the failure in a brand-new `v2-logistics` worktree after a clean `npm install`. Not a CI risk today (GitHub Actions builds on Linux, where `path.join` never produces a backslash), but it will bite the next fresh Windows dev checkout the same way it just did here. `patch-package` (generate a `patches/@opennextjs+aws+3.4.0.patch`, add a `postinstall` script) would make the fix survive `npm install`.
 
 ### Standing Logistics Backlog
 
