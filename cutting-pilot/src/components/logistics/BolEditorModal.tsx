@@ -32,14 +32,25 @@ export default function BolEditorModal({ target, onCancel, onSaved }: BolEditorM
   const [notice, setNotice] = useState<string | null>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<BolEditorHandle | null>(null);
-
-  useEffect(() => {
-    setActiveIndex(target?.index ?? 0);
-    setNotice(null);
-  }, [target]);
+  // Tracks the last `target` this effect actually mounted for, so a target swap and a picker-
+  // driven activeIndex change can share one effect without racing: setting activeIndex in
+  // response to a NEW target used to run in a separate effect keyed only on [target], which
+  // fired in the same commit as this one and could mount target.bols[<stale activeIndex>] for
+  // one pass before the corrected index took effect. Not reachable today (the dashboard always
+  // passes index 0), but real for any future caller of a nonzero EditorTarget.index.
+  const prevTargetRef = useRef<EditorTarget | null>(null);
 
   useEffect(() => {
     if (!target) return;
+    if (prevTargetRef.current !== target) {
+      prevTargetRef.current = target;
+      setNotice(null);
+      const wantIndex = target.index ?? 0;
+      if (activeIndex !== wantIndex) {
+        setActiveIndex(wantIndex);
+        return; // re-run once activeIndex catches up -- never mount on the stale index
+      }
+    }
     const bol = target.bols[activeIndex];
     const container = mountRef.current;
     if (!bol || !container) return;

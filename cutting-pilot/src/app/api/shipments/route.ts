@@ -41,7 +41,8 @@ export async function GET(request: NextRequest) {
          FROM shipments
          LEFT JOIN jobs j ON j.id = shipments.job_id
         WHERE ${where.join(" AND ")}
-        ORDER BY shipments.ship_date ASC, shipments.created_at ASC`
+        ORDER BY (shipments.ship_date IS NULL OR shipments.ship_date = ''),
+                 shipments.ship_date ASC, shipments.created_at ASC`
     ).bind(...binds).all();
     return NextResponse.json({ ok: true, data: results ?? [] });
   } catch (e: any) {

@@ -1909,9 +1909,16 @@ Entries within each module are ordered by prompt # descending (newest first).
   locked scope (bay assignment belongs to the Loading Dashboard, unit 4) and are not ported;
   `BolGenerateModal` drops "Include packing slip"/"Include Loading Diagram" (neither has a v2
   endpoint in scope — packing-slip bytes live in the Job Board, the Loading Diagram in Load
-  Builder, unit 3) and keeps only "Hide tracking QR code," which needs no cross-module data. Build
-  Load stays a plain link to the LEGACY load builder (`logistics/load-builder.html?job_id=`) — its
-  own v2 port is unit 3, untouched here. Middleware (`src/middleware.ts`) gained 5 new
+  Builder, unit 3) and the bol-customers address-book search panel (populates `customer_id` +
+  ship-to autofill; no v2 `/api/bol-customers` endpoint exists yet — `customer_id` is sent as
+  `null`, which the fenced POST route already tolerates). "Hide tracking QR code" was authored
+  and then removed on self-review: in legacy it only ever affects the PDF built immediately after
+  Generate, in the same in-memory session — v2's Generate modal doesn't render a PDF itself (View
+  BOL does, via a separate later fetch), so the checkbox had nowhere left to take effect and would
+  have shipped as dead UI. "Siplast product?" survives in its place and IS wired to the payload —
+  it's a persisted, render-affecting column (`bolShared.ts` rewrites `(HB-10)` to
+  `(Siplast HB-10)` on it), unlike the QR flag. Build Load stays a plain link to the LEGACY load
+  builder (`logistics/load-builder.html?job_id=`) — its own v2 port is unit 3, untouched here. Middleware (`src/middleware.ts`) gained 5 new
   `PERMISSION_MAP` entries (`/v2/api/bols`, `/v2/api/loading-assignments`, `/v2/api/jobs`,
   `/v2/api/shipments`, `/v2/logistics`) — confirmed none collides with or is a prefix of any
   existing entry. `npx tsc --noEmit` and `npm run cf-build` (not bare `opennextjs-cloudflare
@@ -1920,6 +1927,39 @@ Entries within each module are ordered by prompt # descending (newest first).
   **No D1 migration** — reads existing tables only; the fenced writes reuse the existing `bols`
   schema untouched. Prompt number left as `PXXX` per its own header note ("Steve assigns the real
   number, do not self-assign") — needs renumbering before this lands in a real prompt sequence.
+  **Post-review fixes applied before this session's termination** (advisor pass): (1)
+  `GET /v2/api/shipments`'s `ORDER BY` now sorts undated shipments last —
+  `ship_date IS NULL OR ship_date = ''` first in the sort key, then `ship_date ASC` — SQLite's
+  default NULL-and-empty-string-sorts-first behavior would otherwise have floated every shipment
+  with no ship date to the top of the live ops queue. (2) `BolViewerModal`'s comment header now
+  names a side effect of the frozen-trailer fix worth knowing about: because `onEdit` is handed
+  the live-enriched BOL and `BolEditorModal`'s PUT sends the full row back, editing-and-saving a
+  BOL also heals its stored `trailer_no` to the current dock value — new, desirable behavior with
+  no legacy equivalent. (3) Hardcoded hex in `bolDomGlue.ts`'s `confirmNoBolNumber` card and
+  `bolEditorEngine.ts`'s Apply button / drag handles / scrap toggle swapped for
+  `var(--surface)`/`var(--text)`/`var(--border)`/`var(--brand)` (the PDF-overlay input fields'
+  `rgba(255,255,255,0.88)` background is left as literal — those sit on a rendered white PDF page
+  and must stay light regardless of app theme). (4) `Modal.tsx` (the shared primitive, used well
+  beyond this unit) gained `max-h-[90vh] overflow-y-auto` on its card — nothing in it previously
+  bounded height, and this unit is the first caller to put a 560px `PdfViewer` or a `70vh` editor
+  inside it; on a short viewport the Apply/Cancel/close controls could go unreachable with no
+  scrollbar. (5) `BolEditorModal` had two effects race on a target change — one resetting
+  `activeIndex` from `target.index`, a second mounting the editor keyed on
+  `[target, activeIndex]` — that could mount `target.bols[<stale activeIndex>]` for one pass
+  before the corrected index landed. Not reachable today (the dashboard always opens index 0) but
+  real for any future multi-BOL caller; collapsed into one effect that never mounts before the
+  index catches up. **Local smoke test — partially run, rest disclosed rather than skipped
+  silently**: started `npm run dev` (bare `next dev`, no wrangler) and confirmed the `/v2/logistics`
+  page shell renders and returns real HTML. Every route this unit added is D1-backed
+  (`/v2/api/shipments`, `/v2/api/bols`, `/v2/api/jobs/:id`, `/v2/api/loading-assignments`), and
+  under bare `next dev` in this sandbox `getEnv()`'s `getCloudflareContext()` call hangs
+  indefinitely rather than erroring — confirmed by a direct `curl` against `/v2/api/shipments`
+  timing out. So the dashboard's actual data load, the Generate modal's fenced-write 501 banner,
+  and the Viewer/Editor's PDF paths (which additionally depend on legacy-served
+  `/logistics/assets/*` files a standalone `next dev`/`wrangler dev` process doesn't route) could
+  NOT be smoke-tested locally in this environment — this needs a real `wrangler dev --remote` (or
+  equivalent D1-reachable) session, which whoever picks this up next should run before flipping
+  `V2_LOGISTICS_WRITES_ENABLED`.
 
 - **P435 — logistics v2 migration, unit 1: BOL core port (`logistics/bol-shared.js` →
   `cutting-pilot/src/lib/bolShared.ts`) + parity harness (next-platform-agent §9a, isolated

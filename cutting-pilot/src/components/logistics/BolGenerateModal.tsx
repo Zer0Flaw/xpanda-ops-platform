@@ -2,10 +2,20 @@
 // src/components/logistics/BolGenerateModal.tsx
 // Replaces legacy's BolCompose.open (logistics/bol-compose.js) as a real React component — a
 // per-trailer paged form (not the 47x h() DOM-builder original) prefilled from the job + its
-// live loading assignments. "Include packing slip" / "Include Loading Diagram" are deliberately
-// dropped from this port: neither has a v2 endpoint in this unit's scope (packing-slip bytes
-// live in the Job Board; the Loading Diagram comes from Load Builder, its own later unit) — only
-// "Hide tracking QR code" survives, since it needs no cross-module data.
+// live loading assignments. Three legacy features are deliberately dropped from this port:
+//   - "Include packing slip" / "Include Loading Diagram": neither has a v2 endpoint in this
+//     unit's scope (packing-slip bytes live in the Job Board; the Loading Diagram comes from
+//     Load Builder, its own later unit).
+//   - The bol-customers address-book search panel (bol-compose.js:361-404, populates
+//     `customer_id` + ship-to autofill): no v2 `/api/bol-customers` endpoint exists yet.
+//   - "Hide tracking QR code": in legacy this only ever affects the PDF built immediately after
+//     Generate, in the same in-memory session (bol-compose.js:654-676) -- it is never persisted.
+//     v2's Generate modal doesn't render a PDF itself (View BOL does, via a later, separate
+//     fetch), so there is nowhere left for this flag to take effect; keeping the checkbox would
+//     have shipped a control that silently does nothing.
+// "Siplast product?" survives and IS wired through to the POST payload -- unlike the QR flag,
+// it's a persisted, render-affecting DB column (bolShared.ts rewrites "(HB-10)" to
+// "(Siplast HB-10)" on it), so it must be set correctly at generate time.
 //
 // Write action is FENCED (POST /v2/api/bols returns 501 while V2_LOGISTICS_WRITES_ENABLED is
 // false) -- Generate All still runs the full save loop per trailer so the wiring is exercised
@@ -77,7 +87,10 @@ export default function BolGenerateModal({ jobId, onClose }: BolGenerateModalPro
   const [job, setJob] = useState<JobForBol | null>(null);
   const [trailers, setTrailers] = useState<TrailerForm[]>([]);
   const [page, setPage] = useState(0);
-  const [hideQr, setHideQr] = useState(false);
+  // Module-level (not per-trailer) flag, mirrors legacy's BM.siplast (bol-compose.js:210) — it's
+  // render-affecting server-side (bolShared.ts rewrites "(HB-10)" -> "(Siplast HB-10)" on it), so
+  // unlike "Hide tracking QR" (dropped below) this one is wired all the way to the POST payload.
+  const [siplast, setSiplast] = useState(false);
 
   const [generating, setGenerating] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -244,6 +257,11 @@ export default function BolGenerateModal({ jobId, onClose }: BolGenerateModalPro
         contact_info: [td.contactName ? `POC: ${td.contactName}` : "", td.contactPhone || ""].filter(Boolean).join(" "),
         po_number: td.poNumber || "",
         is_master_bol: 0,
+        siplast: siplast ? 1 : 0,
+        // No v2 address-book search exists yet (legacy's GET /api/bol-customers, driven from a
+        // search panel in bol-compose.js:361-404) -- customer_id stays unset here, same scope cut
+        // as packing slip / loading diagram above. The server already tolerates a missing value.
+        customer_id: null,
         bol_group_id: bolGroupId,
         load_number: i + 1,
         load_count: trailers.length,
@@ -476,8 +494,8 @@ export default function BolGenerateModal({ jobId, onClose }: BolGenerateModalPro
           </Field>
 
           <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-            <input type="checkbox" checked={hideQr} onChange={(e) => setHideQr(e.target.checked)} />
-            Hide tracking QR code
+            <input type="checkbox" checked={siplast} onChange={(e) => setSiplast(e.target.checked)} />
+            Siplast product?
           </label>
 
           {progress.length > 0 && (

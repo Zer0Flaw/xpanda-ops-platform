@@ -13,6 +13,12 @@
 // Bug 2 fix (stale lock state): lock state is computed from a FRESH fetch of this job's
 // shipment row on every open (never from a list already sitting in a parent's state), so a
 // status change that happened after the dashboard's last poll is reflected immediately.
+//
+// Side effect of the Bug 1 fix worth naming: `onEdit` is handed the live-enriched `bols` (trailer
+// number overwritten from the dock assignment), and BolEditorModal's PUT sends the full row back
+// -- so any edit-and-save on a BOL also heals its stored `trailer_no` to the current dock value.
+// Legacy has no equivalent (it edits the frozen stored value in place); this is a deliberate,
+// desirable improvement, not a bug, but it is new behavior worth calling out.
 import { useEffect, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
 import Modal from "@/components/Modal";

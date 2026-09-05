@@ -30,7 +30,7 @@ export default function Modal({ isOpen, onClose, title, children, size = "md" }:
       onClick={onClose}
     >
       <div
-        className={`w-full ${size === "xl" ? "sm:max-w-[min(52.5rem,92vw)]" : size === "lg" ? "sm:max-w-2xl" : "sm:max-w-md"} bg-surface rounded-t-2xl sm:rounded-2xl shadow-xl p-6 space-y-4`}
+        className={`w-full ${size === "xl" ? "sm:max-w-[min(52.5rem,92vw)]" : size === "lg" ? "sm:max-w-2xl" : "sm:max-w-md"} bg-surface rounded-t-2xl sm:rounded-2xl shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto`}
         style={{ boxShadow: "var(--shadow-md)" }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"

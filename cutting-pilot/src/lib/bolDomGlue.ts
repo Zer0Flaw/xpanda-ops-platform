@@ -116,14 +116,16 @@ export function confirmNoBolNumber(): Promise<boolean> {
     backdrop.style.cssText =
       "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:10000;display:flex;align-items:center;justify-content:center;";
 
+    // Tokenized (var(--surface)/var(--text)/var(--border)/var(--brand)), not hardcoded hex, so
+    // this respects light/dark theme like every other surface in the app.
     const card = document.createElement("div");
     card.style.cssText =
-      "background:#fff;border-radius:12px;padding:24px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.15);text-align:center;";
+      "background:var(--surface);border-radius:12px;padding:24px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.15);text-align:center;";
     card.innerHTML = `
-      <div style="font-size:15px;font-weight:600;margin-bottom:16px;color:#111827;">No BOL/INV # entered.<br>Continue without one?</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:16px;color:var(--text);">No BOL/INV # entered.<br>Continue without one?</div>
       <div style="display:flex;gap:10px;justify-content:center;">
-        <button id="bol-toast-cancel" style="padding:10px 20px;border-radius:8px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:14px;font-weight:600;color:#111827;">Cancel</button>
-        <button id="bol-toast-continue" style="padding:10px 20px;border-radius:8px;border:none;background:#334155;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">Continue</button>
+        <button id="bol-toast-cancel" style="padding:10px 20px;border-radius:8px;border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">Cancel</button>
+        <button id="bol-toast-continue" style="padding:10px 20px;border-radius:8px;border:none;background:var(--brand);color:#fff;cursor:pointer;font-size:14px;font-weight:600;">Continue</button>
       </div>
     `;
     backdrop.appendChild(card);

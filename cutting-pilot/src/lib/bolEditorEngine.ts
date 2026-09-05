@@ -83,7 +83,7 @@ function buildScrapToggle(initVal: boolean): HTMLDivElement {
     wrap.dataset.scrapValue = String(val);
     wrap.querySelectorAll("button").forEach((b) => {
       const active = (b.dataset.scrapOption === "yes") === val;
-      (b as HTMLElement).style.background = active ? "#1e293b" : "var(--card-bg,#fff)";
+      (b as HTMLElement).style.background = active ? "var(--brand,#1e293b)" : "var(--card-bg,#fff)";
       (b as HTMLElement).style.color = active ? "#fff" : "var(--text,#111827)";
     });
   }
@@ -98,7 +98,7 @@ function buildScrapToggle(initVal: boolean): HTMLDivElement {
     btn.dataset.scrapOption = val ? "yes" : "no";
     btn.style.cssText =
       "padding:2px 8px;border-radius:4px;cursor:pointer;font-weight:600;border:1px solid var(--border,#d1d5db);";
-    btn.style.background = val === initVal ? "#1e293b" : "var(--card-bg,#fff)";
+    btn.style.background = val === initVal ? "var(--brand,#1e293b)" : "var(--card-bg,#fff)";
     btn.style.color = val === initVal ? "#fff" : "var(--text,#111827)";
     btn.addEventListener("click", () => setState(val));
     wrap.appendChild(btn);
@@ -187,7 +187,7 @@ export async function mountBolEditor(
   applyBtn.type = "button";
   applyBtn.textContent = "Apply Changes";
   applyBtn.style.cssText =
-    "padding:8px 20px;border-radius:8px;border:none;background:#1e293b;color:#fff;cursor:pointer;font-size:14px;font-weight:600;";
+    "padding:8px 20px;border-radius:8px;border:none;background:var(--brand,#1e293b);color:#fff;cursor:pointer;font-size:14px;font-weight:600;";
 
   actionBar.appendChild(cancelBtn);
   actionBar.appendChild(applyBtn);
@@ -237,7 +237,7 @@ export async function mountBolEditor(
     const handle = document.createElement("div");
     handle.title = "Drag to move · double-click to reset";
     handle.style.cssText =
-      "position:absolute;width:16px;height:16px;border-radius:4px;background:#1e293b;color:#fff;font-size:11px;line-height:16px;text-align:center;cursor:grab;z-index:5;box-shadow:0 1px 2px rgba(0,0,0,0.3);touch-action:none;user-select:none;";
+      "position:absolute;width:16px;height:16px;border-radius:4px;background:var(--brand,#1e293b);color:#fff;font-size:11px;line-height:16px;text-align:center;cursor:grab;z-index:5;box-shadow:0 1px 2px rgba(0,0,0,0.3);touch-action:none;user-select:none;";
     handle.textContent = "✥";
     attachDragHandle(handle, k);
     handleEls[k] = handle;
