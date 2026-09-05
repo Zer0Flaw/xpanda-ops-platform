@@ -1836,6 +1836,91 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX (Steve to assign) — logistics v2 migration, unit 2: shipment dashboard port +
+  `bol-compose`/`bol-editor` rebuilt as real React components (next-platform-agent §9a +
+  react-component-agent §9b, isolated `v2-logistics` worktree/branch — not merged to `main`, not
+  deployed by this prompt).** Rebased `v2-logistics` onto `main` (P436/P433/P434) with no
+  conflicts before starting. Ports `logistics/index.html`'s outbound shipment dashboard to
+  `/v2/logistics` (reachable by direct URL only — NOT wired into `PlatformHeader`'s nav or the
+  home page, per the v2 visibility gate; `NAV_MODULES`'s existing "Logistics" entry still points
+  at the legacy page, untouched) and rebuilds `bol-compose.js`/`bol-editor.js` as three real
+  components composing the shared `Modal`/`PdfViewer` primitives — `BolViewerModal.tsx`,
+  `BolGenerateModal.tsx`, `BolEditorModal.tsx` — instead of a 1:1 transliteration of either
+  47x-`h()` DOM builder. New `src/lib/bolDomGlue.ts` reimplements the DOM/download glue unit 1
+  deliberately left out of `bolShared.ts`: `buildCombinedBolPdf()` fetches the template (per
+  copy-type) and FRSCRIPT.TTF font by URL — running BOTH of legacy's font-byte guards
+  (content-type excludes `text/html` AND `isLikelyFontBytes`'s magic-byte sniff), not just one —
+  then calls `bolShared.generatePdf()` three times (original/driver/customer) and merges the
+  pages into one packet, exactly mirroring `generateCombinedCopies`/`viewBolForJob`; `openPdf`/
+  `confirmNoBolNumber` ported near-verbatim (vanilla DOM, not React — one-shot utilities with no
+  reusable call site). `trackingBaseUrl` is always `window.location.origin` (never omitted) so
+  the QR's drawn module count matches legacy's — a `wrangler dev`/prod origin difference will
+  change the QR's exact geometry vs. a `bol-parity.mjs` fixture run against a different origin;
+  that's expected, not a defect. New `src/lib/bolEditorEngine.ts` ports `bol-editor.js`'s
+  canvas + pdf.js + drag-handle field editor almost verbatim (deliberately kept imperative DOM,
+  mounted into a React-ref'd container — dragging absolutely-positioned inputs over a live canvas
+  render isn't a case React state improves on, and legacy already isolated it as a self-contained
+  module) — same `pdfjs-dist@4.4.168` npm import + `/v2/pdf.worker.min.mjs` workerSrc pattern
+  `src/lib/packingSlip.ts` already established (no new build step). **Both dashboard bugs fixed
+  structurally, not patched**: (1) frozen trailer number — `BolViewerModal` re-enriches every
+  load's trailer live from `GET /v2/api/loading-assignments?job_id=` on every open, overriding
+  the stored `trailer_no`; a null-`load_number` BOL (legacy/manual, always single-load) falls
+  back to the job's sole assignment, mirroring `api/carrier/route.ts`'s same join shape, so
+  legacy rows enrich too, not only newly-generated ones. (2) stale Generate→View toggle — the
+  dashboard refetches `/v2/api/shipments` after every successful generate, and the viewer
+  computes lock state from a FRESH `job_id`-scoped shipment fetch on every open rather than
+  trusting a list already sitting in a parent's state. **Suffix auto-fill deliberately corrected,
+  not reproduced as-is**: ported from `bol-compose.js:448-462`, but a manual edit to ANY trailer's
+  INV# now clears THAT trailer's own auto-fill flag (legacy never did, so a later edit to
+  trailer 0 could silently clobber a hand-typed value on trailer 2+ — this prompt's own spec
+  called out the corrected behavior). New endpoints (all under `/v2/api/*`, session-gated,
+  permission keys mirror legacy's `logistics.bol`/`logistics.loading`/`jobs`/`logistics.dashboard`
+  exactly — no new keys): `GET /v2/api/jobs/:id` (BOL-generate prefill; mirrors legacy's
+  `GET /api/jobs/:id` minus `processes`/`ship_to_standardized` JSON parsing), `GET
+  /v2/api/loading-assignments?job_id=` (scoped read, deliberately does NOT replicate legacy's
+  backfill-on-GET side effect — that already runs against prod from the legacy page; duplicating
+  an INSERT-on-read on what this unit treats as a read route would be a new, unrequested write
+  path), `GET /v2/api/shipments` (outbound list + `job_id=` single-shipment lookup that bypasses
+  the date window, now also joining `jobs` for `invoice_number` and ordering soonest-ship-date-
+  first — a live ops queue, not legacy's admin-log ordering), `GET /v2/api/bols?job_id=` (live).
+  **Write routes AUTHORED but FENCED** per the prompt's read/write fence (`v2` shares prod D1):
+  `POST /v2/api/bols` and `PUT /v2/api/bols/:id` implement the full legacy logic (regenerate-
+  replaces-previous with R2 cleanup and access-token carryover on POST; full-row replace on PUT
+  mirroring legacy's UPDATE column set EXACTLY, including its omissions — `bol_number`,
+  `load_number`, `load_count`, `bol_group_id`, `siplast`, `shipper_name` are deliberately not in
+  the SET list so they survive a full-row replace; the 409 `locked: true` guard for shipped
+  loads; `access_token` read-modify-write, never overwritten once set) behind a single
+  `const V2_LOGISTICS_WRITES_ENABLED = false`, checked as the FIRST statement before any D1
+  read — returns `501 { error: "v2 logistics writes disabled (read-only migration phase)" }`
+  when off. `BolGenerateModal`'s Generate-All and `BolEditorModal`'s Apply both run their full
+  save flow against these routes (exercising the real wiring end-to-end) and surface a 501 as a
+  clear, non-blocking banner — never an infinite spinner. `BolEditorModal` specifically never
+  loses the operator's edits on a fenced/locked/failed save: `bolEditorEngine`'s Apply handler
+  defers its own DOM teardown until the caller reports success via `finishApply(true)`; a 501/
+  409/error instead re-enables the Apply button in place with the edits still on screen (a
+  deviation from legacy, which just alerts and closes on any PUT failure — a deliberate
+  improvement, not a bug reproduction, since this unit's writes are *expected* to 501 during the
+  read-only phase). Activity-log inserts added to both fenced routes (`activity_log` table,
+  same shape `src/app/api/orders/route.ts` already established for v2) so they don't add to the
+  `V2-ACTIVITY-LOG-COVERAGE.md` debt once the flag flips. **Scope deliberately narrower than a
+  1:1 port, each cut justified in the CHANGELOG for whoever picks up units 3/4**: the dashboard
+  is a flat, live "what ships next" queue (`ShipmentRow`/`BolActions`) — legacy's date-grouped
+  calendar view, inbound-shipment tab, and per-row dock-bay-assignment cell are out of this unit's
+  locked scope (bay assignment belongs to the Loading Dashboard, unit 4) and are not ported;
+  `BolGenerateModal` drops "Include packing slip"/"Include Loading Diagram" (neither has a v2
+  endpoint in scope — packing-slip bytes live in the Job Board, the Loading Diagram in Load
+  Builder, unit 3) and keeps only "Hide tracking QR code," which needs no cross-module data. Build
+  Load stays a plain link to the LEGACY load builder (`logistics/load-builder.html?job_id=`) — its
+  own v2 port is unit 3, untouched here. Middleware (`src/middleware.ts`) gained 5 new
+  `PERMISSION_MAP` entries (`/v2/api/bols`, `/v2/api/loading-assignments`, `/v2/api/jobs`,
+  `/v2/api/shipments`, `/v2/logistics`) — confirmed none collides with or is a prefix of any
+  existing entry. `npx tsc --noEmit` and `npm run cf-build` (not bare `opennextjs-cloudflare
+  build`) both green; `/logistics` builds to 348KB/612KB first-load (pdf-lib + pdfjs-dist +
+  qrcode-generator all bundled for the three modals — expected, comparable to `/blocks`).
+  **No D1 migration** — reads existing tables only; the fenced writes reuse the existing `bols`
+  schema untouched. Prompt number left as `PXXX` per its own header note ("Steve assigns the real
+  number, do not self-assign") — needs renumbering before this lands in a real prompt sequence.
+
 - **P435 — logistics v2 migration, unit 1: BOL core port (`logistics/bol-shared.js` →
   `cutting-pilot/src/lib/bolShared.ts`) + parity harness (next-platform-agent §9a, isolated
   `v2-logistics` worktree/branch — not merged to `main`, not deployed by this prompt).** Ports

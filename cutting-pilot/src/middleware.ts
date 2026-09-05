@@ -44,6 +44,14 @@ const PERMISSION_MAP: Array<{ prefix: string; keys: string[] }> = [
   { prefix: "/v2/carrier", keys: ["logistics.carrier_view"] },
   { prefix: "/v2/api/production", keys: ["production.log"] },
   { prefix: "/v2/production", keys: ["production.log"] },
+  // Logistics v2 unit 2 (shipment dashboard). Keys mirror the legacy PATH/API_PERMISSION_MAP
+  // in _worker.js/lib/core.js exactly (logistics.dashboard, logistics.bol, logistics.loading,
+  // jobs) — no new permission keys introduced.
+  { prefix: "/v2/api/bols", keys: ["logistics.bol"] },
+  { prefix: "/v2/api/loading-assignments", keys: ["logistics.loading"] },
+  { prefix: "/v2/api/jobs", keys: ["jobs"] },
+  { prefix: "/v2/api/shipments", keys: ["logistics.dashboard"] },
+  { prefix: "/v2/logistics", keys: ["logistics.dashboard"] },
 ];
 
 function permissionKeysFor(pathname: string): string[] | null {
