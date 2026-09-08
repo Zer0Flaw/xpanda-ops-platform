@@ -5,7 +5,7 @@
 // needs the full field set (trailer editing, notes, photo/BOL counts, per-status action buttons)
 // and per-card permission-aware handlers the wall component was never meant to carry. Reuses
 // components/loading/status.ts's statusVariant AS-IS for color/label, per doctrine.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Camera, FileText, Truck, Calendar } from "lucide-react";
 import { statusVariant } from "./status";
 import { advanceLabel, nextLoadingStatus, type DockAssignment } from "./dockTypes";
@@ -52,6 +52,13 @@ export default function DockAssignmentCard({
   const trailerEditable =
     canManage && !!a.bay_id && ["not_started", "loading", "loaded"].includes(a.loading_status);
   const [trailerDraft, setTrailerDraft] = useState(a.trailer_number ?? "");
+  // The card stays mounted across a refetch (same key={a.id}), so without this the input would
+  // keep showing a rejected edit after a failed PUT, or a stale value after another operator's
+  // change. Safe because there's no polling here -- `a` only changes on our own load() calls,
+  // never mid-keystroke.
+  useEffect(() => {
+    setTrailerDraft(a.trailer_number ?? "");
+  }, [a.trailer_number]);
 
   return (
     <div

@@ -71,6 +71,7 @@ export default function LoadedChecklistModal({ assignment, onClose, onDone }: Lo
     setChangesNotes("");
     setPhotos([]);
     setError(null);
+    setSaving(false);
   }
 
   function handleClose() {
