@@ -1836,6 +1836,54 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX (Steve to assign) — logistics v2 migration, unit 3b: dock loading dashboard
+  (`/v2/logistics/loading`), writes LIVE (next-platform-agent §9a + react-component-agent §9b,
+  isolated `v2-logistics` worktree/branch — not merged to `main`, not deployed by this prompt).**
+  Depends on unit 2 (BolViewerModal reuse) and unit 3a (scratch D1/R2 preview bindings, so
+  `wrangler dev` writes never touch prod). Ports `logistics/loading.html`'s interactive dock
+  dashboard — the FIRST write-enabled v2 unit — as a new route distinct from the existing passive
+  `/v2/loading` TV wall (`logistics.loading.tv`, untouched). New `/v2/api/loading-bays` (GET),
+  extended `/v2/api/loading-assignments` (board-level GET with legacy's backfill-on-read side
+  effect now replicated, since this is the direct successor of legacy's dashboard load; POST
+  adopt-first create; PUT full field-by-field contract — `location`/`bay_id`/`trailer_number`/
+  `notes`/`ready_checklist`/`loading_status`, mirrored from all 13 legacy PUT call sites verified
+  by direct read of `logistics/loading.html`), new `/v2/api/loading-photos` (+`[id]`, `[id]/image`
+  — R2 put-then-D1-row, `photo_data` NOT NULL sentinel, matches legacy's storage contract exactly).
+  Side effects ported for parity beyond the prompt's literal endpoint list, since skipping them
+  would regress real backstops once operators use this exclusively: `shipments.status` sync on
+  every loading-status change, `completeCuttingLinesForJob` (new `src/lib/cuttingLines.ts`, 1:1
+  port of `_worker.js/lib/cutting-lines.js`) on loaded/in_transit/delivered, and the
+  `bols.trailer_no` back-write on trailer-# edit. **New gap closed vs. legacy**: trailer-# edit is
+  now manager-only SERVER-SIDE (`X-User-Can-Manage-Loading` header, checked as defense-in-depth —
+  legacy's backend never actually gated this field, only its UI hid the input for non-managers).
+  `BolViewerModal` (unit 2) gained optional `loadNumber`/`viewOnly` props so the dock board's View
+  BOL can show one load's BOL (not the job's combined packet) without an Edit affordance, mirroring
+  legacy's `viewBolForJob(jobId, loadNumber)` fallback (exact match → job's sole BOL → no match)
+  exactly. New `LoadedChecklistModal.tsx` (qty/paperwork checklist + photo capture/upload, composes
+  `Modal`) and `AssignBayModal.tsx` port legacy's two modals; new `DockAssignmentCard.tsx` is a
+  purpose-built interactive card (NOT a retrofit of the wall's presentational `LoadCard.tsx`/
+  `BayTile.tsx`, which stay untouched and unchanged) reusing only `status.ts`'s `statusVariant` per
+  doctrine. **Deliberate scope cuts** (documented, not silent): Loading Team View (single-bay
+  mobile drill-down) collapsed into one responsive board serving both roles; drag-and-drop (mouse +
+  touch) dropped — every drop target already has an equivalent ≥44px action button, no capability
+  lost; INV#/customer search, sort picker, section-collapse persistence, notification deep-links,
+  the Shipping Info modal, and the photo-gallery lightbox all cut (see BACKLOG.md); the "+ Pull
+  Job" search-and-onboard flow has no UI trigger in this pass (needs a `/v2/api/jobs?search=`
+  endpoint that doesn't exist in v2 yet — `POST /v2/api/loading-assignments` is still implemented
+  server-side per the prompt's explicit endpoint list). The `load-days` per-load-ship-date PUT
+  sub-route was NOT ported — grepped all 13 legacy PUT call sites in `loading.html` directly and
+  confirmed zero of them touch `ship_date`; it's the Job Board's split-shipment feature, a
+  different module, not something this dashboard's own UI ever edits (the prompt's "load ship-date
+  edit" scope line appears to be a drafting overstatement — flagging per the standing "verify
+  prompt claims against the actual source" practice). The This Week / Show All toggle WAS kept
+  (not decorative — without it, Awaiting/Delivered grow unbounded at any real data volume). No DB
+  migration (existing tables only, per the prompt's own §DB note). `npx tsc --noEmit` clean;
+  `npm run cf-build` green. `wrangler dev` smoke against scratch bindings is OWED — unit 3a's
+  `preview_database_id` is still a placeholder pending Steve's manual `wrangler d1 create`, so the
+  live-write path was verified by code review and the build gates only, not by an actual write
+  against scratch D1. `wrangler deploy --dry-run` confirms prod `database_id`/`bucket_name`
+  unchanged. Legacy `logistics/loading.html` untouched and stays live until floor-tested.
+
 - **PXXX (Steve to assign) — logistics v2 migration, unit 3a: preview D1 + R2 bootstrap
   (dev write-safety) (next-platform-agent §9a, isolated `v2-logistics` worktree/branch — not
   merged to `main`, not deployed by this prompt).** Foundational infra for unit 3b (the first

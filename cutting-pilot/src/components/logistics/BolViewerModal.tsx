@@ -33,9 +33,18 @@ interface BolViewerModalProps {
   jobId: string | null;
   onClose: () => void;
   onEdit: (bols: BolRecord[], jobId: string, index: number) => void;
+  // Loading v2 unit 3b reuse: legacy's viewBolForJob(jobId, loadNumber) shows only the ONE
+  // load's BOL, not the job's combined packet. When set, filter to that load before building
+  // the PDF (falls back to the job's sole BOL when load_number is null/unmatched, same rule
+  // BolGenerateModal/legacy use for legacy single-load BOLs predating the load_number field).
+  loadNumber?: number | null;
+  // Loading v2 unit 3b reuse: the dock dashboard's View BOL is read-only (§Locked scope) --
+  // hides the Edit button regardless of lock state. Unit 2's shipment dashboard omits this
+  // (defaults to false) and keeps its existing edit affordance.
+  viewOnly?: boolean;
 }
 
-export default function BolViewerModal({ jobId, onClose, onEdit }: BolViewerModalProps) {
+export default function BolViewerModal({ jobId, onClose, onEdit, loadNumber = null, viewOnly = false }: BolViewerModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [src, setSrc] = useState<string | null>(null);
@@ -94,11 +103,27 @@ export default function BolViewerModal({ jobId, onClose, onEdit }: BolViewerModa
         }
         const soleAssignmentTrailer = assignments.length === 1 ? assignments[0].trailer_number : null;
 
-        const enriched = sorted.map((b) => {
+        const enrichedAll = sorted.map((b) => {
           const ln = b.load_number != null ? Number(b.load_number) : null;
           const live = ln != null ? trailerByLoad.get(ln) : (soleAssignmentTrailer ?? undefined);
           return live ? { ...b, trailer_no: live } : b;
         });
+
+        // Filter to a single load when requested (dock dashboard's per-load View BOL). Mirrors
+        // legacy's viewBolForJob(jobId, loadNumber) fallback exactly: exact load_number match,
+        // else the job's sole BOL (a legacy/manual BOL predating load_number), else no match.
+        let enriched = enrichedAll;
+        if (loadNumber != null) {
+          const exact = enrichedAll.filter((b) => Number(b.load_number) === Number(loadNumber));
+          if (exact.length) {
+            enriched = exact;
+          } else if (enrichedAll.length === 1) {
+            enriched = enrichedAll;
+          } else {
+            setError("No BOL found for this load.");
+            return;
+          }
+        }
         setBols(enriched);
 
         const shipRow = shipJson.ok && Array.isArray(shipJson.data) ? shipJson.data[0] : null;
@@ -119,7 +144,7 @@ export default function BolViewerModal({ jobId, onClose, onEdit }: BolViewerModa
     return () => {
       cancelled = true;
     };
-  }, [jobId]);
+  }, [jobId, loadNumber]);
 
   // Revoke on unmount too, not just on job-context change.
   useEffect(
@@ -145,7 +170,7 @@ export default function BolViewerModal({ jobId, onClose, onEdit }: BolViewerModa
 
       {!loading && !error && src && (
         <div className="space-y-3">
-          {!locked && (
+          {!locked && !viewOnly && (
             <div className="flex justify-end">
               <button
                 type="button"

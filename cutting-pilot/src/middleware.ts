@@ -49,6 +49,9 @@ const PERMISSION_MAP: Array<{ prefix: string; keys: string[] }> = [
   // jobs) — no new permission keys introduced.
   { prefix: "/v2/api/bols", keys: ["logistics.bol"] },
   { prefix: "/v2/api/loading-assignments", keys: ["logistics.loading"] },
+  { prefix: "/v2/api/loading-bays", keys: ["logistics.loading"] },
+  { prefix: "/v2/api/loading-photos", keys: ["logistics.loading"] },
+  { prefix: "/v2/logistics/loading", keys: ["logistics.loading"] },
   { prefix: "/v2/api/jobs", keys: ["jobs"] },
   { prefix: "/v2/api/shipments", keys: ["logistics.dashboard"] },
   { prefix: "/v2/logistics", keys: ["logistics.dashboard"] },
@@ -131,6 +134,15 @@ export async function middleware(request: NextRequest) {
   headers.set(
     "X-User-Can-Manage-Notes",
     hasPermission(user, "notes.manage", "edit") ? "1" : "0"
+  );
+  // Loading v2 unit 3b — one header for every manager-only dock action (bay assignment, yard,
+  // in-transit, revert, and trailer-# edit). Legacy's UI hides these behind the same
+  // `logistics.loading.manage` check but its backend never actually gated trailer-# server-side
+  // -- this header (checked in the route as defense-in-depth, same pattern as
+  // X-User-Can-Manage-Cutting) closes that one real gap while matching every other action.
+  headers.set(
+    "X-User-Can-Manage-Loading",
+    hasPermission(user, "logistics.loading.manage", "edit") ? "1" : "0"
   );
   // P439 — JSON blob of the user's merged role permissions, so legacy endpoints (e.g.
   // /api/jobs/:id/assignments, /api/jobs/:id/shifts) and the new v2 /v2/api/orders/:id/shifts
