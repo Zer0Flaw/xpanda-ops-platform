@@ -37,15 +37,15 @@ INSERT INTO jobs (
   ship_to_city, ship_to_state, ship_to_zip,
   ship_to_verified, ship_to_standardized, ship_to_verified_at, trailer_group_id
 ) VALUES (
-  'job-scratch-1', 'loading', 'Scratch Customer A', 'PO-SCRATCH-1', 'INV-SCRATCH-1', '2026-09-09', NULL,
-  NULL, '', 'truck', 'Scratch Carrier', 1, 0,
+  'job-scratch-1', 'loading', 'Scratch Customer A', 'PO-SCRATCH-1', 'INV-SCRATCH-1', '2026-09-09', '',
+  '', '', 'truck', 'Scratch Carrier', 1, 0,
   '', '', '', '', 'Scratch dev seed job',
   '', '', '', '', NULL,
-  0, 0, '{}', '2026-01-01 00:00:00', '2026-01-01 00:00:00',
-  NULL, NULL, NULL, NULL, 'scratch-seed',
+  'normal', 0, '{}', '2026-01-01 00:00:00', '2026-01-01 00:00:00',
+  NULL, NULL, '', '', 'scratch-seed',
   'Scratch Customer A', '', '123 Scratch St', '',
   'Scratchville', 'OH', '44000',
-  0, 0, NULL, NULL
+  'unverified', NULL, NULL, NULL
 );
 
 INSERT INTO jobs (
@@ -59,15 +59,15 @@ INSERT INTO jobs (
   ship_to_city, ship_to_state, ship_to_zip,
   ship_to_verified, ship_to_standardized, ship_to_verified_at, trailer_group_id
 ) VALUES (
-  'job-scratch-2', 'done', 'Scratch Customer B', 'PO-SCRATCH-2', 'INV-SCRATCH-2', '2026-09-10', NULL,
-  NULL, '', 'truck', 'Scratch Carrier', 1, 0,
+  'job-scratch-2', 'done', 'Scratch Customer B', 'PO-SCRATCH-2', 'INV-SCRATCH-2', '2026-09-10', '',
+  '', '', 'truck', 'Scratch Carrier', 1, 0,
   '', '', '', '', '',
   '', '', '', '', NULL,
-  0, 0, '{}', '2026-01-01 00:00:00', '2026-01-01 00:00:00',
-  NULL, NULL, NULL, NULL, 'scratch-seed',
+  'normal', 0, '{}', '2026-01-01 00:00:00', '2026-01-01 00:00:00',
+  NULL, NULL, '', '', 'scratch-seed',
   'Scratch Customer B', '', '456 Scratch Ave', '',
   'Scratchburg', 'OH', '44001',
-  0, 0, NULL, NULL
+  'unverified', NULL, NULL, NULL
 );
 
 INSERT INTO loading_assignments (id, job_id, bay_id, trailer_number, loading_status, assigned_by, notes, load_number, created_at, updated_at)
@@ -88,7 +88,7 @@ INSERT INTO bols (
 ) VALUES (
   'bol-scratch-1', 'BOL-SCRATCH-1', '2026-09-09', NULL,
   'Scratch Customer A', '', '123 Scratch St', '',
-  'Scratchville', 'OH', '44000', NULL,
+  'Scratchville', 'OH', '44000', '',
   NULL, 'Scratch Carrier', 'TRL-SCRATCH-1', '', '', '',
   'prepaid', 0, '', '', '', 0, 0,
   '', '', '',

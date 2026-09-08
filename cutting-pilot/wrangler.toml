@@ -41,7 +41,7 @@ binding = "ASSETS"
 binding = "DB"
 database_name = "DB"
 database_id = "21d6f47b-0be9-4006-8014-d154e41f91e8"        # PROD — deploy target, do not change
-preview_database_id = "<<SCRATCH_D1_ID — Steve fills after `wrangler d1 create xpanda-v2-scratch`>>"
+preview_database_id = "7d91a764-46cc-4ac7-8622-1a3cd2f0aba4"                 # scratch — dev-only
 
 # ── SAME R2 bucket as legacy ────────────────────────────────────────────────────────
 [[r2_buckets]]
