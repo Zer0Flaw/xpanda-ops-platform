@@ -1836,6 +1836,33 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX (Steve to assign) — logistics v2 migration, unit 3a: preview D1 + R2 bootstrap
+  (dev write-safety) (next-platform-agent §9a, isolated `v2-logistics` worktree/branch — not
+  merged to `main`, not deployed by this prompt).** Foundational infra for unit 3b (the first
+  write-enabled v2 unit): before this, `cutting-pilot/wrangler.toml` bound only PROD D1/R2 with no
+  preview bindings, so `wrangler dev` mutations would have hit production. Added
+  `preview_database_id`/`preview_bucket_name` to the existing `[[d1_databases]]`/`[[r2_buckets]]`
+  blocks (additive only — `database_id`/`bucket_name`/`compatibility_flags`/`compatibility_date`
+  untouched, confirmed by grep and by `wrangler deploy --dry-run` still resolving prod as the
+  deploy target). `preview_database_id` is a placeholder Steve fills after running
+  `wrangler d1 create xpanda-v2-scratch` (account-auth step, not run by this prompt). New
+  `cutting-pilot/scripts/scratch/{schema.sql,seed.sql,README.md}` (committed — dummy data only, no
+  real credentials, same standing precedent as every other committed script in this repo).
+  `schema.sql` is a placeholder pending Steve's `wrangler d1 export DB --no-data` (schema derivation
+  was explicitly out of scope for this prompt — "do not hand-transcribe columns"); `seed.sql` was
+  written from column names read directly out of the real `_worker.js/routes/*.js` INSERT/SELECT
+  statements (jobs, bols, loading_assignments, loading_bays, loading_photos, loading_board_notes,
+  sessions, users, roles, user_roles) rather than guessed, per the prompt's own fallback
+  instruction — README.md flags it for reconciliation against the real export before Steve runs it.
+  Seeds one admin dev user (`user-devtest` / `devtest`) linked to `role-administrator`, a
+  non-expiring session token `DEV-SCRATCH-SESSION`, 3 bays, 2 jobs (one bayed+loading with a BOL
+  and `bol_count>0`, one awaiting), and a loading-board note. README.md documents the host-pinned
+  cookie workaround (`xpanda_session` has no `Domain` attribute, so `wrangler dev` on `localhost`
+  never receives the prod cookie — manually set `xpanda_session=DEV-SCRATCH-SESSION` on the
+  `wrangler dev` origin). No `DB_Migrations/*.sql` created, no prod schema touched — Migration-
+  before-push does not apply (scratch DB only, per the prompt's own note). `npx tsc --noEmit` +
+  `npm run cf-build` green (config-only change verified not to break the build).
+
 - **PXXX (Steve to assign) — logistics v2 migration, unit 2: shipment dashboard port +
   `bol-compose`/`bol-editor` rebuilt as real React components (next-platform-agent §9a +
   react-component-agent §9b, isolated `v2-logistics` worktree/branch — not merged to `main`, not

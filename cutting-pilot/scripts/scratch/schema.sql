@@ -1,0 +1,3 @@
+-- Placeholder. Not yet generated.
+-- Overwritten by: wrangler d1 export DB --no-data --output cutting-pilot/scripts/scratch/schema.sql
+-- See scripts/scratch/README.md, Task 3, step 3.
