@@ -33,18 +33,39 @@
    `CREATE TABLE` DDL. If any column name/order is off, `wrangler d1 execute` will fail loudly
    (no silent partial-apply) — fix the mismatched line(s) and re-run.
 
-4. Apply schema then seed to scratch:
+4. Apply schema then seed to scratch. **Plain `wrangler dev` (no `--remote`) does not talk to the
+   cloud database at all** — it runs against a local Miniflare-emulated D1 (a SQLite file under
+   `.wrangler/state`), and `preview_database_id` is irrelevant to that mode. Pick ONE of the two
+   paths below to match how you intend to run `wrangler dev` in step 5, and use the matching
+   `--local` / `--remote` flag consistently for both this step and step 5 — mixing them (e.g.
+   seeding remote but running dev local, or vice versa) will look like the seed silently didn't
+   take:
+
+   **Local (default, recommended for day-to-day dev):**
    ```
-   wrangler d1 execute xpanda-v2-scratch --file cutting-pilot/scripts/scratch/schema.sql
-   wrangler d1 execute xpanda-v2-scratch --file cutting-pilot/scripts/scratch/seed.sql
+   wrangler d1 execute xpanda-v2-scratch --local --file cutting-pilot/scripts/scratch/schema.sql
+   wrangler d1 execute xpanda-v2-scratch --local --file cutting-pilot/scripts/scratch/seed.sql
    ```
 
-5. Confirm dev uses scratch, not prod:
+   **Remote (only once `preview_database_id` above is the real id, not the placeholder):**
    ```
-   wrangler dev
+   wrangler d1 execute xpanda-v2-scratch --remote --file cutting-pilot/scripts/scratch/schema.sql
+   wrangler d1 execute xpanda-v2-scratch --remote --file cutting-pilot/scripts/scratch/seed.sql
+   ```
+   **Do not run `wrangler dev --remote` while `preview_database_id` is still the placeholder
+   string.** Whether wrangler errors out or silently falls back to the prod `database_id` in that
+   case has not been verified in this session — confirm `wrangler.toml`'s `preview_database_id` is
+   the real id from step 1 before ever passing `--remote`.
+
+5. Confirm dev uses scratch, not prod — run the matching mode from step 4:
+   ```
+   wrangler dev            # local — reads the local emulated D1 you just seeded with --local
+   wrangler dev --remote   # remote — reads the real scratch D1 you seeded with --remote
    ```
    Then hit a read route (e.g. `/v2/api/loading-assignments?job_id=job-scratch-1`) — you should
-   see the seeded scratch rows (`job-scratch-1` / `INV-SCRATCH-1`), not real prod data.
+   see the seeded scratch rows (`job-scratch-1` / `INV-SCRATCH-1`), not real prod data. If the
+   board looks empty, check `showAll` ("Show all" toggle) before assuming the seed failed — see
+   the date-staleness note at the top of `seed.sql`.
 
 ## Dev-auth cookie (host-pinned cookie problem)
 

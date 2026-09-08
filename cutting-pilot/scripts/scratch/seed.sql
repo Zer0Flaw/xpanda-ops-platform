@@ -1,3 +1,9 @@
+-- job-scratch-1/2's ship_date is set to a date near when this file was written (2026-09-08) so the
+-- dock board's default "This week" filter (inCurrentWeek, dockTypes.ts) shows them without extra
+-- clicks. That date WILL go stale -- if you're seeing an empty board, click "Show all" first
+-- before assuming something's broken, or bump these two ship_date values (and bol-scratch-1's
+-- `date` below) to the current week before applying.
+
 INSERT INTO roles (id, name, description, permissions, is_system, created_at, updated_at)
 VALUES (
   'role-administrator', 'Administrator', 'Scratch dev admin (dummy data)',
@@ -31,7 +37,7 @@ INSERT INTO jobs (
   ship_to_city, ship_to_state, ship_to_zip,
   ship_to_verified, ship_to_standardized, ship_to_verified_at, trailer_group_id
 ) VALUES (
-  'job-scratch-1', 'loading', 'Scratch Customer A', 'PO-SCRATCH-1', 'INV-SCRATCH-1', '2026-01-10', NULL,
+  'job-scratch-1', 'loading', 'Scratch Customer A', 'PO-SCRATCH-1', 'INV-SCRATCH-1', '2026-09-09', NULL,
   NULL, '', 'truck', 'Scratch Carrier', 1, 0,
   '', '', '', '', 'Scratch dev seed job',
   '', '', '', '', NULL,
@@ -53,7 +59,7 @@ INSERT INTO jobs (
   ship_to_city, ship_to_state, ship_to_zip,
   ship_to_verified, ship_to_standardized, ship_to_verified_at, trailer_group_id
 ) VALUES (
-  'job-scratch-2', 'done', 'Scratch Customer B', 'PO-SCRATCH-2', 'INV-SCRATCH-2', '2026-01-11', NULL,
+  'job-scratch-2', 'done', 'Scratch Customer B', 'PO-SCRATCH-2', 'INV-SCRATCH-2', '2026-09-10', NULL,
   NULL, '', 'truck', 'Scratch Carrier', 1, 0,
   '', '', '', '', '',
   '', '', '', '', NULL,
@@ -80,7 +86,7 @@ INSERT INTO bols (
   package_qty, package_type, weight, delivery_time, job_id, notes, po_number, render_overrides, access_token, shipper_name,
   bol_group_id, load_number, load_count, created_at
 ) VALUES (
-  'bol-scratch-1', 'BOL-SCRATCH-1', '2026-01-10', NULL,
+  'bol-scratch-1', 'BOL-SCRATCH-1', '2026-09-09', NULL,
   'Scratch Customer A', '', '123 Scratch St', '',
   'Scratchville', 'OH', '44000', NULL,
   NULL, 'Scratch Carrier', 'TRL-SCRATCH-1', '', '', '',
