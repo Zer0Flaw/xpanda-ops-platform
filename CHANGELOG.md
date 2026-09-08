@@ -2157,6 +2157,16 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics
 
+- **P443 — Load builder: customize move no longer leaves an empty slot; REFRESH LOAD renamed
+  COMPACT LOAD (logistics-agent).** Root cause: the customize-mode drag-and-drop move removed a
+  layer from its source column but never cleaned up the source — when the moved layer was the
+  column's last, the source column was re-rendered as an empty "Col N" box. Fixed at the source:
+  after a move, the emptied source column (and its row, if that was the row's last column) is now
+  dropped immediately, so a move can never leave a blank slot. Also renamed the REFRESH LOAD
+  control to COMPACT LOAD (EN/ES/HT) and reworded its success toast; i18n key names left unchanged.
+  With move-time and APPLY-time compaction both automatic, the COMPACT LOAD button is now largely a
+  manual re-tidy that will usually report "already compact." `node --check` clean on the extracted
+  inline script and on `logistics-i18n.js`.
 - **Hotfix (unprompted) — Load builder Results tab: fixed a crash-on-keystroke in the trailer 0
   INV# auto-fill (logistics-agent).** The auto-fill handler read `state.trailers.length`, but
   `state` never declares a `trailers` key (it has `cart`/`skus`/`forcedTrailers`/

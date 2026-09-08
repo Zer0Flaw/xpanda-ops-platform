@@ -2426,6 +2426,12 @@ function renderEditorContent(box, ti, skuLib) {
         const layer = editorRows[fromRi].columns[fromCi].layers.splice(fromLi, 1)[0];
         if (!layer) return;
         editorRows[ri].columns[ci].layers.push(layer);
+        // A move that empties the source column must not leave a blank slot behind — drop the
+        // now-empty source column, and the source row too if that was its last column.
+        if (editorRows[fromRi].columns[fromCi].layers.length === 0) {
+          editorRows[fromRi].columns.splice(fromCi, 1);
+          if (editorRows[fromRi].columns.length === 0) editorRows.splice(fromRi, 1);
+        }
         const edBox = document.getElementById('editor-' + ti);
         edBox.innerHTML = '';
         renderEditorContent(edBox, ti, skuLib);
