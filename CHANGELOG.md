@@ -1836,6 +1836,14 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX — v2 loading dashboard card and bay 1:1 visual parity tuning (`/v2/logistics/loading`) (react-component-agent §9b + next-platform-agent §9a).**
+  Aligns the v2 dock loading dashboard card dimensions, bay layouts, and button sizes 1:1 with legacy `logistics/loading.html`:
+  - **Bay grid & column dimensions**: reconfigured the bays layout to a 6-column grid (`grid-cols-1 md:grid-cols-6 gap-3 min-w-0 md:min-w-[1080px]`) wrapped in horizontal scroll (`overflow-x-auto pb-2`), matching legacy `.ld-bays-grid` (12px gap, 1080px desktop min-width). Each bay column uses `rounded-xl` (12px radius), `p-2` header/body, and `min-h-[150px]` body height matching legacy `.ld-bay-col`.
+  - **Queue / Yard / Transit / Delivered card wrappers**: switched from responsive column grids to flex-wrap with fixed `w-[230px] max-w-full shrink-0` containers and `gap-2` (8px gap), matching legacy `.ld-queue .ld-card, .ld-transit-grid .ld-card { width: 230px; }`.
+  - **Card compaction & typography**: `DockAssignmentCard.tsx` updated to `px-2 py-1.5 space-y-1 rounded-md` (8px horizontal, 6px vertical padding, 6px radius) matching legacy `.ld-card { padding: 6px 8px; border-radius: 6px; }`. INV# header tuned to `text-xs font-bold font-mono` (12px), load count `text-[11px] font-bold text-[#6366f1]`, ship date `text-[10px] font-semibold text-muted`, status badge `text-[10px] font-bold uppercase tracking-wider`, customer subtext `text-[10px] text-muted truncate leading-tight`, and trailer input `h-5 px-1.5 text-[11px] w-24`.
+  - **Action button styling**: compacted action buttons to `h-6 px-2` / `px-2.5 rounded text-[11px] font-semibold` across all variants (primary advance, assign to bay, move to yard/revert, view BOL, archive), matching legacy `.ld-btn-*` sizes.
+  - Verification: `npx tsc --noEmit` and `npm run cf-build` both clean.
+
 - **PXXX — v2 logistics shipment dashboard parity upgrade (`/v2/logistics`): top stats widgets, daily breakdown, week toggles, calendar view, search, and alternating BOL action button (react-component-agent §9b + next-platform-agent §9a).**
   Brings the `/v2/logistics` shipment dashboard to full parity with the operational cockpit from legacy `logistics/index.html`:
   - **Top KPI stats widgets**: 4 summary cards ("Outbound This Week", "Pending Outbound", "In Transit", "Delivered (30d)") backed by aggregate counts in `/v2/api/shipments`.

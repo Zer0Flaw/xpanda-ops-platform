@@ -62,42 +62,48 @@ export default function DockAssignmentCard({
 
   return (
     <div
-      className="rounded-lg border px-3 py-2 space-y-1.5"
-      style={{ background: variant.bg, borderColor: variant.border, borderLeftWidth: 4 }}
+      className="rounded-md border px-2 py-1.5 space-y-1 text-left w-full transition-shadow"
+      style={{
+        background: `linear-gradient(0deg, ${variant.border}1a, ${variant.border}1a), var(--surface)`,
+        borderColor: variant.border,
+        borderLeftWidth: 4,
+      }}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <span className="font-mono tabular-nums font-semibold text-sm truncate" style={{ color: variant.text }}>
+      <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          <span className="font-mono tabular-nums font-bold text-xs truncate" style={{ color: variant.text }}>
             {a.invoice_number ? `INV# ${a.invoice_number}` : "No INV#"}
           </span>
           {showLoadCount && (
-            <span className="font-mono tabular-nums text-[11px] font-semibold text-[var(--info-text)]">
+            <span className="font-mono tabular-nums text-[11px] font-bold text-[#6366f1]">
               {a.load_number ?? 1} of {a.load_count}
             </span>
           )}
           {a.load_ship_date && (
             <span
-              className="inline-flex items-center gap-1 font-mono tabular-nums text-[11px] font-medium"
-              style={{ color: variant.text }}
+              className="inline-flex items-center gap-0.5 font-mono tabular-nums text-[10px] font-semibold text-muted"
             >
-              <Calendar size={11} aria-hidden="true" />
+              <Calendar size={10} aria-hidden="true" />
               {formatShipDay(a.load_ship_date)}
             </span>
           )}
         </div>
         <span
-          className="shrink-0 font-mono tabular-nums text-[10px] font-semibold px-1.5 py-[1px] rounded"
-          style={{ background: variant.border, color: "var(--primary-text)" }}
+          className="shrink-0 text-[10px] font-bold uppercase tracking-wider"
+          style={{ color: variant.border }}
         >
           {variant.label}
         </span>
       </div>
 
-      <div className="text-xs truncate" style={{ color: variant.text }} title={a.customer ?? "Unknown customer"}>
+      <div
+        className="text-[10px] text-muted truncate leading-tight"
+        title={a.customer ?? "Unknown customer"}
+      >
         {a.customer || "Unknown customer"}
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap text-[11px]" style={{ color: variant.text }}>
+      <div className="flex items-center gap-2 flex-wrap text-[10px] text-muted">
         {trailerEditable ? (
           <input
             type="text"
@@ -109,31 +115,31 @@ export default function DockAssignmentCard({
             }}
             onClick={(e) => e.stopPropagation()}
             placeholder="Trailer #"
-            className="min-h-[44px] px-2 rounded border border-[var(--input-border)] bg-[var(--input-bg)] text-text font-mono text-xs w-28"
+            className="h-5 px-1.5 rounded border border-[var(--input-border)] bg-[var(--input-bg)] text-text font-mono text-[11px] w-24"
           />
         ) : a.trailer_number ? (
-          <span className="inline-flex items-center gap-1 font-mono tabular-nums font-semibold">
-            <Truck size={12} aria-hidden="true" />
+          <span className="inline-flex items-center gap-1 font-mono tabular-nums font-semibold text-text">
+            <Truck size={11} aria-hidden="true" />
             {a.trailer_number}
           </span>
         ) : null}
         {a.ship_to_city && (
-          <span>
+          <span className="truncate max-w-[120px]">
             {a.ship_to_city}
             {a.ship_to_state ? `, ${a.ship_to_state}` : ""}
           </span>
         )}
         {a.photo_count > 0 && (
-          <span className="inline-flex items-center gap-1 font-mono tabular-nums">
-            <Camera size={12} aria-hidden="true" />
+          <span className="inline-flex items-center gap-0.5 font-mono tabular-nums font-semibold">
+            <Camera size={11} aria-hidden="true" />
             {a.photo_count}
           </span>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-1.5 pt-0.5">
+      <div className="flex flex-wrap gap-1 pt-0.5">
         {a.loading_status === "awaiting" && canManage && (
-          <button type="button" onClick={() => onAssignBay(a)} className={ACTION_BTN}>
+          <button type="button" onClick={() => onAssignBay(a)} className={ACTION_BTN_ASSIGN}>
             Assign to bay
           </button>
         )}
@@ -150,7 +156,7 @@ export default function DockAssignmentCard({
             title={a.bol_count === 0 ? "No BOL generated for this load yet" : undefined}
             className={`${ACTION_BTN} disabled:opacity-40 disabled:cursor-default inline-flex items-center gap-1`}
           >
-            <FileText size={12} aria-hidden="true" />
+            <FileText size={11} aria-hidden="true" />
             View BOL
           </button>
         )}
@@ -185,8 +191,10 @@ export default function DockAssignmentCard({
 }
 
 const ACTION_BTN =
-  "min-h-[44px] px-2.5 rounded-md border border-[var(--line)] bg-[var(--surface)] text-[11px] font-semibold text-text cursor-pointer hover:bg-[var(--ghost-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
+  "h-6 px-2 rounded border border-[var(--line)] bg-[var(--surface)] text-[11px] font-semibold text-text cursor-pointer hover:bg-[var(--ghost-bg)] transition-colors";
 const ACTION_BTN_PRIMARY =
-  "min-h-[44px] px-2.5 rounded-md border-none bg-[var(--primary-bg)] text-[11px] font-semibold text-[var(--primary-text)] cursor-pointer hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
+  "h-6 px-2.5 rounded border-none bg-[var(--primary-bg)] text-[11px] font-semibold text-[var(--primary-text)] cursor-pointer hover:opacity-90 transition-opacity";
+const ACTION_BTN_ASSIGN =
+  "h-6 px-2.5 rounded border border-[var(--line)] bg-[var(--accent-soft)] text-[11px] font-semibold text-text cursor-pointer hover:bg-[var(--ghost-bg)] transition-colors";
 const ACTION_BTN_WARN =
-  "min-h-[44px] px-2.5 rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] text-[11px] font-semibold text-[var(--warn-text)] cursor-pointer hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
+  "h-6 px-2 rounded border border-[var(--warn-border)] bg-[var(--warn-bg)] text-[11px] font-semibold text-[var(--warn-text)] cursor-pointer hover:opacity-90 transition-opacity";

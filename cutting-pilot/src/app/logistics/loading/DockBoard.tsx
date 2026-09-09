@@ -192,7 +192,7 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
           <button
             type="button"
             onClick={() => setShowAll((v) => !v)}
-            className="min-h-[44px] px-3 rounded-md border border-[var(--input-border)] bg-[var(--card-bg)] text-text text-sm font-semibold cursor-pointer"
+            className="h-8 px-3 rounded-md border border-[var(--input-border)] bg-[var(--card-bg)] text-text text-xs font-semibold cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
           >
             {showAll ? "Show all" : "This week"}
           </button>
@@ -223,9 +223,11 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
               {awaiting.length === 0 ? (
                 <p className="text-sm text-text-faint italic px-1">Nothing waiting on a bay.</p>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="flex flex-wrap gap-2">
                   {awaiting.map((a) => (
-                    <DockAssignmentCard key={a.id} a={a} {...cardHandlers} />
+                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                      <DockAssignmentCard a={a} {...cardHandlers} />
+                    </div>
                   ))}
                 </div>
               )}
@@ -236,26 +238,28 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
               {bays.length === 0 ? (
                 <p className="text-sm text-text-faint italic px-1">No bays configured.</p>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {bays.map((bay) => {
-                    const bayAssignments = set.filter(
-                      (a) => a.bay_id === bay.id && BAY_ACTIVE_STATUSES.includes(a.loading_status)
-                    );
-                    return (
-                      <div key={bay.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] flex flex-col">
-                        <div className="px-3 py-2 border-b border-[var(--line)] font-bold text-sm text-text">
-                          Bay {bay.bay_number}
+                <div className="overflow-x-auto pb-2">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3 min-w-0 md:min-w-[1080px]">
+                    {bays.map((bay) => {
+                      const bayAssignments = set.filter(
+                        (a) => a.bay_id === bay.id && BAY_ACTIVE_STATUSES.includes(a.loading_status)
+                      );
+                      return (
+                        <div key={bay.id} className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] flex flex-col min-w-0">
+                          <div className="p-2 border-b border-[var(--line)] text-center font-bold text-sm text-text">
+                            Bay {bay.bay_number}
+                          </div>
+                          <div className="p-2 space-y-1.5 min-h-[150px]">
+                            {bayAssignments.length === 0 ? (
+                              <p className="text-xs text-text-faint italic text-center py-6">Empty</p>
+                            ) : (
+                              bayAssignments.map((a) => <DockAssignmentCard key={a.id} a={a} {...cardHandlers} />)
+                            )}
+                          </div>
                         </div>
-                        <div className="p-2 space-y-2 min-h-[80px]">
-                          {bayAssignments.length === 0 ? (
-                            <p className="text-xs text-text-faint italic text-center py-4">Empty</p>
-                          ) : (
-                            bayAssignments.map((a) => <DockAssignmentCard key={a.id} a={a} {...cardHandlers} />)
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </section>
@@ -265,9 +269,11 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
               {yard.length === 0 ? (
                 <p className="text-sm text-text-faint italic px-1">No trailers in the yard.</p>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="flex flex-wrap gap-2">
                   {yard.map((a) => (
-                    <DockAssignmentCard key={a.id} a={a} {...cardHandlers} />
+                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                      <DockAssignmentCard a={a} {...cardHandlers} />
+                    </div>
                   ))}
                 </div>
               )}
@@ -278,9 +284,11 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
               {transit.length === 0 ? (
                 <p className="text-sm text-text-faint italic px-1">Nothing in transit.</p>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="flex flex-wrap gap-2">
                   {transit.map((a) => (
-                    <DockAssignmentCard key={a.id} a={a} {...cardHandlers} />
+                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                      <DockAssignmentCard a={a} {...cardHandlers} />
+                    </div>
                   ))}
                 </div>
               )}
@@ -291,9 +299,11 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
               {delivered.length === 0 ? (
                 <p className="text-sm text-text-faint italic px-1">Nothing delivered yet.</p>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="flex flex-wrap gap-2">
                   {delivered.map((a) => (
-                    <DockAssignmentCard key={a.id} a={a} {...cardHandlers} showArchive />
+                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                      <DockAssignmentCard a={a} {...cardHandlers} showArchive />
+                    </div>
                   ))}
                 </div>
               )}
