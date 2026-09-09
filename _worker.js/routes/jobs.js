@@ -230,7 +230,7 @@ export async function handleApiJobs(request, env) {
     // orthogonal to lifecycle stage). Restricted to jobs that are actually finished: status
     // done/shipped, or a delivered outbound shipment as direct evidence of completion even when
     // jobs.status hasn't caught up (the legacy dock board can advance loading_assignments/
-    // shipments without ever writing jobs.status — see status-write-site-inventory.md L23/L26).
+    // shipments without ever writing jobs.status — see Audits/status-write-site-inventory.md L23/L26).
     // A job that's merely not_started/in_production/loading with no delivery evidence is a
     // genuinely open order and must stay visible on the board and both cutting queues.
     // Best-effort — a sweep failure must never break the board. Idempotent via archived_at IS NULL.
