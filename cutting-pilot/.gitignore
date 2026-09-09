@@ -15,3 +15,6 @@ node_modules/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# BOL parity harness output (scripts/bol-parity.mjs) — regenerate locally, not a build artifact
+bol-v2-sample.pdf
