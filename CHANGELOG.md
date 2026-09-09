@@ -1836,6 +1836,11 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX — v2 logistics dark-launch gate: new admin-only `logistics.v2` permission gates the
+  `/v2/logistics` and `/v2/logistics/loading` pages (first-match-wins, above the granular
+  `logistics.*` rules in `cutting-pilot/src/middleware.ts`). APIs unchanged. Label registered in
+  `admin/roles.html`.**
+
 - **PXXX (Steve to assign) — logistics v2 migration, unit 3b: dock loading dashboard
   (`/v2/logistics/loading`), writes LIVE (next-platform-agent §9a + react-component-agent §9b,
   isolated `v2-logistics` worktree/branch — not merged to `main`, not deployed by this prompt).**

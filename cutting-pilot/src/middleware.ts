@@ -51,6 +51,11 @@ const PERMISSION_MAP: Array<{ prefix: string; keys: string[] }> = [
   { prefix: "/v2/api/loading-assignments", keys: ["logistics.loading"] },
   { prefix: "/v2/api/loading-bays", keys: ["logistics.loading"] },
   { prefix: "/v2/api/loading-photos", keys: ["logistics.loading"] },
+  // --- DARK LAUNCH (PXXX): v2 logistics pages are admin-only until rollout. ---
+  // No role holds "logistics.v2", so hasPermission() => admin-only. Ordered specific-before-general.
+  // ROLLOUT: delete these two lines; the granular logistics.* rules below take over automatically.
+  { prefix: "/v2/logistics/loading", keys: ["logistics.v2"] },
+  { prefix: "/v2/logistics", keys: ["logistics.v2"] },
   { prefix: "/v2/logistics/loading", keys: ["logistics.loading"] },
   { prefix: "/v2/api/jobs", keys: ["jobs"] },
   { prefix: "/v2/api/shipments", keys: ["logistics.dashboard"] },
