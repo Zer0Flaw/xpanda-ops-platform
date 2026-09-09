@@ -40,6 +40,7 @@ const PERMISSION_MAP: Array<{ prefix: string; keys: string[] }> = [
   { prefix: "/v2/notes", keys: ["notes"] },
   { prefix: "/v2/api/blocks", keys: ["manufacturing.blocks"] },
   { prefix: "/v2/blocks", keys: ["manufacturing.blocks"] },
+  { prefix: "/v2/api/logistics", keys: ["logistics.v2"] },
   { prefix: "/v2/api/carrier", keys: ["logistics.carrier_view"] },
   { prefix: "/v2/carrier", keys: ["logistics.carrier_view"] },
   { prefix: "/v2/api/production", keys: ["production.log"] },

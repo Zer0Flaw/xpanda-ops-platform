@@ -1836,6 +1836,56 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX — Invoice Analytics, unit C: schema + BOL-token resolver + persist/flags API
+  (next-platform-agent §9a + database-api-agent §9, two migrations authored not run).** Replaces
+  the LISMA freight-tracking spreadsheet. New `DB_Migrations/geocode_cache.sql` and
+  `freight_invoice_lines.sql` (gitignored, authored not run — written as bare statements with no
+  inline comments per the standing migration-file convention; the prompt's own shown SQL included
+  explanatory comments, which don't belong in a file Steve pastes directly into the D1 console).
+  New `src/lib/logistics/{origin,freightInvoice,ors,flags}.ts` + `freightInvoice.selfcheck.ts`.
+  `extractBolTokens` scans only inside parenthetical groups (never the surrounding free text) and
+  drops a paren whose entire trimmed content is a bare date — validated against all 7 of the
+  prompt's own examples AND 8 additional real cases pulled from the same Lisma #4611 PDF unit D
+  found (a comma-separated pair, a slash-separated pair that is NOT a date and must not be
+  dropped, two full BOL numbers joined by a bare dash rather than one BOL with a suffix, and a
+  4-digit project-name prefix outside the parens that must never be mistaken for a token) —
+  self-check harness compiled and run standalone via `tsc`+`node` (no `tsx`/network dependency),
+  all cases pass. **Verified, not assumed, that `bols.bol_number` really stores the dash-suffixed
+  string exactly as staff type it** (`logistics/bol-compose.js`'s `invNumber` field, with its own
+  auto-fill-suffix behavior for multi-trailer BOL groups, is what gets saved as `bol_number`) —
+  confirms the prompt's literal `WHERE bol_number = ?` exact-match query is correct as given; no
+  BOL-number/load-number splitting needed. **One deliberate improvement over the prompt's literal
+  per-token query loop**: resolves all of a line's BOL tokens in a single `WHERE bol_number IN
+  (...)` statement rather than one query per token — `idx_bols_number` is a plain (non-unique)
+  index, so a query-per-token loop can silently miss a duplicate `bol_number` row; the batched
+  form naturally picks up every matching row and still satisfies the prompt's own
+  "single-statement queries" discipline (fewer total statements, not more). **One deliberate
+  narrowing of the prompt's `match_status` handling**: kept the enum to the 3 values the
+  migration itself documents (`matched | unmatched | multi_destination`) rather than also writing
+  literal `geocode_failed`/`route_failed` values into `freight_invoice_lines.match_status` as
+  File 6's ors.ts notes loosely suggested — a BOL that resolves to a real address but hits a
+  temporary ORS failure is stored as `unmatched` (excluded from stats) with a note distinguishing
+  it from "no BOL found" (`geocode_cache.status` still uses `geocode_failed`/`route_failed`
+  exactly as that table's own column documents, since a cache row genuinely needs to remember
+  *why* a retry is owed). Unit D's rendering was written to match this — it keys "mileage
+  unavailable" off `miles === null`, not off a `matchStatus` string, so nothing downstream
+  actually depended on the wider enum. Dedupes ORS calls within one request for free: mileage
+  resolution reads/writes `geocode_cache` per line in the same loop, so a repeated destination
+  address on line 2 just hits the row line 1 already wrote, without any extra network call.
+  `GET /v2/api/logistics/invoice` lists stored invoices grouped by `invoice_number`;
+  `GET /v2/api/logistics/flags` reuses `computeZipVariance`/`computeInversions`
+  (`src/lib/logistics/flags.ts`) shared with the POST response so the math can't drift between
+  the two. `middleware.ts` gains one new `PERMISSION_MAP` line gating `/v2/api/logistics/*` on
+  the existing `logistics.v2` dark-launch key (anchor grep confirmed unique before inserting).
+  `npx tsc --noEmit`, `freightInvoice.selfcheck.ts` (compiled to the scratch dir and run via
+  plain `node`, exit 0), and `npm run cf-build` all green. Single commit: the 6
+  `cutting-pilot/src/**` files + `middleware.ts` + `CHANGELOG.md` + `BACKLOG.md` — **not** the two
+  `DB_Migrations/*.sql` (gitignored, stay local-only), staged by explicit path (same two
+  pre-existing unrelated uncommitted files left alone as unit D, above). **HELD, not pushed** —
+  references two tables that don't exist in production D1 yet. Terminates at: "Committed on main,
+  HELD. Do NOT push until Steve confirms BOTH migrations were run in the D1 console AND the
+  `ORS_API_KEY` Worker secret is set."
+
 - **PXXX — v2 loading dashboard card and bay 1:1 visual parity tuning (`/v2/logistics/loading`) (react-component-agent §9b + next-platform-agent §9a).**
   Aligns the v2 dock loading dashboard card dimensions, bay layouts, and button sizes 1:1 with legacy `logistics/loading.html`:
   - **Bay grid & column dimensions**: reconfigured the bays layout to a 6-column grid (`grid-cols-1 md:grid-cols-6 gap-3 min-w-0 md:min-w-[1080px]`) wrapped in horizontal scroll (`overflow-x-auto pb-2`), matching legacy `.ld-bays-grid` (12px gap, 1080px desktop min-width). Each bay column uses `rounded-xl` (12px radius), `p-2` header/body, and `min-h-[150px]` body height matching legacy `.ld-bay-col`.
