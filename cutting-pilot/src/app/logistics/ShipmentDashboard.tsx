@@ -1,25 +1,34 @@
 "use client";
 // src/app/logistics/ShipmentDashboard.tsx
-// Design read: building this as a shipment dashboard for logistics/office staff on desktop
-// (tablet-capable), cockpit-dense, flat table + per-row actions + three drill-down modals
-// (Viewer / Generate / Editor) — a master-detail list, not a marketing-style card grid.
-//
-// Ports logistics/index.html's outbound shipment list (buildOutboundRow/renderOutbound) as real
-// React components rather than a 1:1 transliteration: legacy's date-grouped calendar/inbound-tab
-// dashboard is reduced to the flat, live "what ships next" queue this unit's locked scope
-// actually asks for (rows + Build Load + Generate/View BOL) — inbound tracking, the bay-
-// assignment cell, and the week/calendar filters are legacy-only concerns out of scope here.
-//
-// Bug 2 fix (Generate<->View toggle): every action that can change a shipment's `bol_count`
-// (closing the Generate modal after a successful generate) triggers `load()` here, so the row's
-// button always reflects a fresh fetch — never the in-memory list from before the action.
-import { useCallback, useEffect, useState } from "react";
+// Outbound shipment logistics dashboard.
+// Features:
+// - Operational KPI stats widgets at the top (This Week, Pending, In Transit, Delivered 30d)
+// - View switcher: Daily Breakdown List vs Interactive Month Calendar
+// - Week selector: This Week (default) ↔ Next Week toggle, with week arrows and Show All
+// - Instant client-side search across customer, invoice, trailer, carrier, BOL
+// - Daily grouping of shipments with day headers, piece/bdft sums, and status badges
+// - Alternating Generate BOL ↔ View BOL actions with live refresh on generation
+import { useCallback, useEffect, useState, useMemo } from "react";
+import {
+  Search,
+  X,
+  Calendar as CalendarIcon,
+  List as ListIcon,
+  ChevronLeft,
+  ChevronRight,
+  Truck,
+  CheckCircle2,
+  Clock,
+  Navigation,
+  RefreshCw,
+} from "lucide-react";
 import PlatformHeader from "@/components/PlatformHeader";
 import ShipmentRow from "@/components/logistics/ShipmentRow";
+import ShipmentCalendar from "./ShipmentCalendar";
 import BolViewerModal from "@/components/logistics/BolViewerModal";
 import BolGenerateModal from "@/components/logistics/BolGenerateModal";
 import BolEditorModal, { type EditorTarget } from "@/components/logistics/BolEditorModal";
-import type { ShipmentListItem } from "@/components/logistics/types";
+import type { ShipmentListItem, LogisticsStats } from "@/components/logistics/types";
 import type { BolRecord } from "@/lib/bolShared";
 
 interface ShipmentDashboardProps {
@@ -28,18 +37,92 @@ interface ShipmentDashboardProps {
   permissions: Record<string, { view?: boolean; edit?: boolean }>;
 }
 
-export default function ShipmentDashboard({ userName, isAdmin, permissions }: ShipmentDashboardProps) {
+function getMondayForOffset(offset: number): { mondayStr: string; label: string } {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMon = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMon + offset * 7);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const mondayStr = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+  const startLabel = monday.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const endLabel = sunday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return { mondayStr, label: `${startLabel} – ${endLabel}` };
+}
+
+function formatDayHeader(dateStr: string): { title: string; isToday: boolean } {
+  if (!dateStr || dateStr === "No Date") {
+    return { title: "Unscheduled / No Date", isToday: false };
+  }
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return { title: dateStr, isToday: false };
+
+  const date = new Date(y, m - 1, d);
+  const now = new Date();
+  const isToday =
+    now.getFullYear() === y && now.getMonth() === m - 1 && now.getDate() === d;
+
+  const weekday = date.toLocaleDateString("en-US", { weekday: "long" });
+  const formatted = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  return { title: `${weekday} — ${formatted}`, isToday };
+}
+
+export default function ShipmentDashboard({
+  userName,
+  isAdmin,
+  permissions,
+}: ShipmentDashboardProps) {
   const [rows, setRows] = useState<ShipmentListItem[] | null>(null);
+  const [calendarRows, setCalendarRows] = useState<ShipmentListItem[] | null>(null);
+  const [stats, setStats] = useState<LogisticsStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // View mode: 'list' or 'calendar'
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+
+  // Week offset: 0 = This Week, 1 = Next Week, null = Show All
+  const [weekOffset, setWeekOffset] = useState<number | null>(0);
+
+  // Search and status filter
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  // Modals
   const [viewerJobId, setViewerJobId] = useState<string | null>(null);
   const [generateJobId, setGenerateJobId] = useState<string | null>(null);
   const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
 
+  const activeWeekInfo = useMemo(() => {
+    if (weekOffset === null) return null;
+    return getMondayForOffset(weekOffset);
+  }, [weekOffset]);
+
+  // Primary loader
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/v2/api/shipments?direction=outbound");
+      setLoading(true);
+      const params = new URLSearchParams({ direction: "outbound" });
+
+      if (viewMode === "list" && weekOffset !== null) {
+        const { mondayStr } = getMondayForOffset(weekOffset);
+        params.set("week", mondayStr);
+      } else {
+        // Calendar view or Show All: load wider window
+        params.set("days", "90");
+      }
+
+      if (statusFilter) {
+        params.set("status", statusFilter);
+      }
+
+      const res = await fetch(`/v2/api/shipments?${params.toString()}`);
       const json = await res.json();
       if (!res.ok || !json.ok) {
         setError(json.error || "Couldn't load the shipment list.");
@@ -47,12 +130,32 @@ export default function ShipmentDashboard({ userName, isAdmin, permissions }: Sh
       }
       setError(null);
       setRows(json.data ?? []);
+      if (json.stats) {
+        setStats(json.stats);
+      }
     } catch {
       setError("Network error — couldn't reach the server.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [weekOffset, viewMode, statusFilter]);
+
+  // Load calendar-specific broader dataset if switching to calendar
+  useEffect(() => {
+    if (viewMode === "calendar") {
+      (async () => {
+        try {
+          const res = await fetch("/v2/api/shipments?direction=outbound&days=365");
+          const json = await res.json();
+          if (res.ok && json.ok) {
+            setCalendarRows(json.data ?? []);
+          }
+        } catch {
+          // fallback to standard rows
+        }
+      })();
+    }
+  }, [viewMode]);
 
   useEffect(() => {
     load();
@@ -76,11 +179,60 @@ export default function ShipmentDashboard({ userName, isAdmin, permissions }: Sh
 
   function handleGenerateDone(generated: boolean) {
     setGenerateJobId(null);
-    if (generated) load(); // Bug 2 fix — refresh bol_count so the row flips to "View BOL"
+    if (generated) {
+      load(); // Refreshes bol_count so the row flips to "View BOL"
+    }
   }
 
+  // Filtered rows for list view
+  const filteredRows = useMemo(() => {
+    if (!rows) return [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+
+    return rows.filter((s) => {
+      const cust = (s.customer || "").toLowerCase();
+      const inv = (s.invoice_number || "").toLowerCase();
+      const trailer = (s.trailer_number || "").toLowerCase();
+      const bol = (s.bol_number || "").toLowerCase();
+      const carrier = (s.carrier || "").toLowerCase();
+      const method = (s.method || "").toLowerCase();
+      return (
+        cust.includes(q) ||
+        inv.includes(q) ||
+        trailer.includes(q) ||
+        bol.includes(q) ||
+        carrier.includes(q) ||
+        method.includes(q)
+      );
+    });
+  }, [rows, searchQuery]);
+
+  // Grouped by ship_date for daily breakdown
+  const dayGroups = useMemo(() => {
+    const map = new Map<string, ShipmentListItem[]>();
+
+    for (const s of filteredRows) {
+      const key = s.ship_date || "No Date";
+      const list = map.get(key) ?? [];
+      list.push(s);
+      map.set(key, list);
+    }
+
+    const sortedKeys = Array.from(map.keys()).sort((a, b) => {
+      if (a === "No Date") return 1;
+      if (b === "No Date") return -1;
+      return a.localeCompare(b);
+    });
+
+    return sortedKeys.map((dateKey) => ({
+      dateKey,
+      shipments: map.get(dateKey) ?? [],
+    }));
+  }, [filteredRows]);
+
   return (
-    <div className="min-h-screen flex flex-col bg-bg">
+    <div className="min-h-screen flex flex-col bg-bg text-text">
       <PlatformHeader
         userName={userName}
         isAdmin={isAdmin}
@@ -89,53 +241,369 @@ export default function ShipmentDashboard({ userName, isAdmin, permissions }: Sh
         currentPath="/v2/logistics"
       />
 
-      <div className="flex-1 w-full max-w-screen-2xl mx-auto px-4 py-6 space-y-4">
-        <h1 className="text-xl font-semibold text-text">Shipment dashboard</h1>
+      <div className="flex-1 w-full max-w-screen-2xl mx-auto px-4 py-6 space-y-5">
+        {/* Title & Quick Links */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-text">Shipment Dashboard</h1>
+            <p className="text-xs text-muted">Manage outbound shipping schedules, trailer loads, and BOL records</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href="/logistics/load-builder.html"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[var(--border)] bg-surface text-xs font-semibold text-text hover:bg-[var(--ghost-bg)] no-underline transition-colors"
+            >
+              <Truck size={14} className="text-muted" />
+              Load Builder
+            </a>
+            <a
+              href="/v2/logistics/loading"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-[var(--border)] bg-surface text-xs font-semibold text-text hover:bg-[var(--ghost-bg)] no-underline transition-colors"
+            >
+              Dock Loading
+            </a>
+            <button
+              type="button"
+              onClick={load}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-[var(--border)] bg-surface text-muted hover:text-text hover:bg-[var(--ghost-bg)] transition-colors cursor-pointer"
+              title="Refresh"
+              aria-label="Refresh dashboard"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+        </div>
 
+        {/* Top KPI Stats Widgets */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+          <div className="bg-surface border border-[var(--card-border)] rounded-xl p-4 shadow-sm flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold text-muted uppercase tracking-wider">Outbound This Week</div>
+              <div className="text-2xl font-bold tabular-nums text-text mt-1">
+                {stats?.outboundThisWeek ?? "—"}
+              </div>
+              <div className="text-[11px] text-muted mt-0.5">scheduled Mon–Sun</div>
+            </div>
+            <div className="w-10 h-10 rounded-lg bg-[var(--info-bg)]/20 border border-[var(--info-border)] flex items-center justify-center text-[var(--brand)]">
+              <Truck size={20} />
+            </div>
+          </div>
+
+          <div className="bg-surface border border-[var(--card-border)] rounded-xl p-4 shadow-sm flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold text-muted uppercase tracking-wider">Pending Outbound</div>
+              <div className="text-2xl font-bold tabular-nums text-text mt-1">
+                {stats?.pendingOutbound ?? "—"}
+              </div>
+              <div className="text-[11px] text-muted mt-0.5">production / ready to ship</div>
+            </div>
+            <div className="w-10 h-10 rounded-lg bg-[var(--warn-bg)]/30 border border-[var(--warn-border)] flex items-center justify-center text-[var(--warn-text)]">
+              <Clock size={20} />
+            </div>
+          </div>
+
+          <div className="bg-surface border border-[var(--card-border)] rounded-xl p-4 shadow-sm flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold text-muted uppercase tracking-wider">In Transit</div>
+              <div className="text-2xl font-bold tabular-nums text-text mt-1">
+                {stats?.inTransit ?? "—"}
+              </div>
+              <div className="text-[11px] text-muted mt-0.5">en route to customer</div>
+            </div>
+            <div className="w-10 h-10 rounded-lg bg-[var(--success-bg)]/20 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <Navigation size={20} />
+            </div>
+          </div>
+
+          <div className="bg-surface border border-[var(--card-border)] rounded-xl p-4 shadow-sm flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold text-muted uppercase tracking-wider">Delivered (30d)</div>
+              <div className="text-2xl font-bold tabular-nums text-text mt-1">
+                {stats?.delivered30d ?? "—"}
+              </div>
+              <div className="text-[11px] text-muted mt-0.5">completed past 30 days</div>
+            </div>
+            <div className="w-10 h-10 rounded-lg bg-[var(--ghost-bg)] border border-[var(--border)] flex items-center justify-center text-muted">
+              <CheckCircle2 size={20} />
+            </div>
+          </div>
+        </div>
+
+        {/* Toolbar: View Switcher, Week Controls, Search & Filter */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-surface border border-[var(--card-border)] rounded-xl p-3 shadow-sm">
+          {/* Left: View Mode Toggle + Week Controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* View Mode Buttons */}
+            <div className="inline-flex rounded-lg border border-[var(--border)] p-0.5 bg-[var(--ghost-bg)]">
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === "list"
+                    ? "bg-surface text-text shadow-xs"
+                    : "text-muted hover:text-text"
+                }`}
+              >
+                <ListIcon size={14} />
+                List
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("calendar")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === "calendar"
+                    ? "bg-surface text-text shadow-xs"
+                    : "text-muted hover:text-text"
+                }`}
+              >
+                <CalendarIcon size={14} />
+                Calendar
+              </button>
+            </div>
+
+            {/* Week Toggles (Visible in List View) */}
+            {viewMode === "list" && (
+              <div className="flex items-center gap-1 ml-1">
+                <div className="inline-flex rounded-lg border border-[var(--border)] p-0.5 bg-[var(--ghost-bg)]">
+                  <button
+                    type="button"
+                    onClick={() => setWeekOffset(0)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                      weekOffset === 0
+                        ? "bg-[var(--brand)] text-white shadow-xs"
+                        : "text-muted hover:text-text"
+                    }`}
+                  >
+                    This Week
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWeekOffset(1)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                      weekOffset === 1
+                        ? "bg-[var(--brand)] text-white shadow-xs"
+                        : "text-muted hover:text-text"
+                    }`}
+                  >
+                    Next Week
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWeekOffset(null)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                      weekOffset === null
+                        ? "bg-surface text-text shadow-xs"
+                        : "text-muted hover:text-text"
+                    }`}
+                  >
+                    Show All
+                  </button>
+                </div>
+
+                {weekOffset !== null && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setWeekOffset((prev) => (prev ?? 0) - 1)}
+                      className="w-8 h-8 rounded-lg border border-[var(--border)] flex items-center justify-center text-muted hover:text-text hover:bg-[var(--ghost-bg)] cursor-pointer"
+                      title="Previous week"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-xs font-medium text-text px-1">
+                      {activeWeekInfo?.label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setWeekOffset((prev) => (prev ?? 0) + 1)}
+                      className="w-8 h-8 rounded-lg border border-[var(--border)] flex items-center justify-center text-muted hover:text-text hover:bg-[var(--ghost-bg)] cursor-pointer"
+                      title="Next week"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Right: Search Box & Status Filter */}
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            {/* Search Input */}
+            <div className="relative flex-1 md:w-64">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search customer, invoice, trailer, BOL…"
+                className="w-full h-9 pl-9 pr-8 text-xs rounded-lg border border-[var(--border)] bg-surface text-text placeholder:text-muted focus:outline-hidden focus:border-[var(--brand)] transition-colors"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-text text-sm cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Status Select */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 px-3 text-xs rounded-lg border border-[var(--border)] bg-surface text-text focus:outline-hidden focus:border-[var(--brand)] cursor-pointer"
+            >
+              <option value="">All Statuses</option>
+              <option value="not_started">Not Started</option>
+              <option value="in_production">In Production</option>
+              <option value="ready_to_ship">Ready to Ship</option>
+              <option value="loading">Loading</option>
+              <option value="loaded">Loaded</option>
+              <option value="in_transit">In Transit</option>
+              <option value="delivered">Delivered</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Error Alert */}
         {error && (
-          <div className="rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn-text)] text-sm px-4 py-3">
-            {error}
-            <button type="button" onClick={load} className="ml-3 underline cursor-pointer">
+          <div className="rounded-xl border border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn-text)] text-sm px-4 py-3 flex items-center justify-between">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={load}
+              className="underline cursor-pointer font-semibold text-xs ml-3"
+            >
               Retry
             </button>
           </div>
         )}
 
-        {loading && !rows && <p className="text-sm text-muted">Loading shipments…</p>}
-
-        {rows && (
-          <div className="overflow-x-auto rounded-xl border border-[var(--card-border)] bg-surface">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--line)] text-left text-xs font-semibold text-muted">
-                  <th className="px-3 py-2">Customer</th>
-                  <th className="px-3 py-2">Ship date</th>
-                  <th className="px-3 py-2">Method / Carrier</th>
-                  <th className="px-3 py-2">Trailer</th>
-                  <th className="px-3 py-2">BDFT</th>
-                  <th className="px-3 py-2">BOL #</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-3 py-6 text-center text-sm text-muted">
-                      No outbound shipments scheduled.
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((s) => (
-                    <ShipmentRow key={s.id} shipment={s} onViewBol={setViewerJobId} onGenerateBol={setGenerateJobId} />
-                  ))
+        {/* Main Content Area */}
+        {loading && !rows ? (
+          <div className="rounded-xl border border-[var(--card-border)] bg-surface p-12 text-center text-sm text-muted">
+            <RefreshCw size={20} className="animate-spin mx-auto mb-2 text-muted" />
+            Loading shipments…
+          </div>
+        ) : viewMode === "calendar" ? (
+          /* Calendar View */
+          <ShipmentCalendar
+            shipments={calendarRows || rows || []}
+            onViewBol={setViewerJobId}
+            onGenerateBol={setGenerateJobId}
+            onFilterDate={(dateStr) => {
+              setSearchQuery(dateStr);
+              setViewMode("list");
+            }}
+          />
+        ) : (
+          /* Daily Breakdown List View */
+          <div className="space-y-6">
+            {dayGroups.length === 0 ? (
+              <div className="rounded-xl border border-[var(--card-border)] bg-surface p-12 text-center">
+                <p className="text-sm font-medium text-text">No outbound shipments found.</p>
+                <p className="text-xs text-muted mt-1">
+                  {searchQuery
+                    ? "Try adjusting your search keywords or clearing filters."
+                    : weekOffset === 0
+                    ? "No shipments are scheduled for this week. Switch to Next Week or Show All."
+                    : "No shipments scheduled for this period."}
+                </p>
+                {(searchQuery || statusFilter || weekOffset !== 0) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setStatusFilter("");
+                      setWeekOffset(0);
+                    }}
+                    className="mt-4 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[var(--border)] text-xs font-semibold text-text hover:bg-[var(--ghost-bg)] cursor-pointer"
+                  >
+                    Reset to This Week
+                  </button>
                 )}
-              </tbody>
-            </table>
+              </div>
+            ) : (
+              dayGroups.map(({ dateKey, shipments }) => {
+                const { title, isToday } = formatDayHeader(dateKey);
+                const totalBdft = shipments.reduce((sum, s) => {
+                  const val = typeof s.total_bdft === "string" ? parseFloat(s.total_bdft) : s.total_bdft;
+                  return sum + (val || 0);
+                }, 0);
+
+                return (
+                  <div key={dateKey} className="space-y-2">
+                    {/* Day Section Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-bold text-text flex items-center gap-2">
+                          {title}
+                          {isToday && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--brand)] text-white">
+                              Today
+                            </span>
+                          )}
+                        </h2>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted">
+                        <span>
+                          <strong className="text-text tabular-nums">{shipments.length}</strong>{" "}
+                          {shipments.length === 1 ? "shipment" : "shipments"}
+                        </span>
+                        {totalBdft > 0 && (
+                          <span>
+                            <strong className="text-text tabular-nums font-mono">
+                              {totalBdft.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                            </strong>{" "}
+                            BDFT
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Day Table */}
+                    <div className="overflow-x-auto rounded-xl border border-[var(--card-border)] bg-surface shadow-xs">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-[var(--line)] bg-[var(--ghost-bg)] text-left text-xs font-semibold text-muted">
+                            <th className="px-3.5 py-2.5">Customer</th>
+                            <th className="px-3.5 py-2.5">Ship date</th>
+                            <th className="px-3.5 py-2.5">Method / Carrier</th>
+                            <th className="px-3.5 py-2.5">Trailer</th>
+                            <th className="px-3.5 py-2.5">BDFT</th>
+                            <th className="px-3.5 py-2.5">BOL #</th>
+                            <th className="px-3.5 py-2.5">Status</th>
+                            <th className="px-3.5 py-2.5 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {shipments.map((s) => (
+                            <ShipmentRow
+                              key={s.id}
+                              shipment={s}
+                              onViewBol={setViewerJobId}
+                              onGenerateBol={setGenerateJobId}
+                            />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
       </div>
 
+      {/* Modals */}
       <BolViewerModal
         jobId={viewerJobId}
         onClose={() => setViewerJobId(null)}
@@ -155,3 +623,4 @@ export default function ShipmentDashboard({ userName, isAdmin, permissions }: Sh
     </div>
   );
 }
+

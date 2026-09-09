@@ -2,6 +2,13 @@
 // Shared shapes for the /v2/logistics dashboard + BOL modals — kept in one place so the
 // dashboard, row, actions, and modals never drift on field names.
 
+export interface LogisticsStats {
+  outboundThisWeek: number;
+  pendingOutbound: number;
+  inTransit: number;
+  delivered30d: number;
+}
+
 export interface ShipmentListItem {
   id: string;
   job_id: string | null;

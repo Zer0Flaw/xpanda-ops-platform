@@ -1836,6 +1836,17 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX — v2 logistics shipment dashboard parity upgrade (`/v2/logistics`): top stats widgets, daily breakdown, week toggles, calendar view, search, and alternating BOL action button (react-component-agent §9b + next-platform-agent §9a).**
+  Brings the `/v2/logistics` shipment dashboard to full parity with the operational cockpit from legacy `logistics/index.html`:
+  - **Top KPI stats widgets**: 4 summary cards ("Outbound This Week", "Pending Outbound", "In Transit", "Delivered (30d)") backed by aggregate counts in `/v2/api/shipments`.
+  - **Week controls**: "This Week" is the primary default view, with single-click toggling to "Next Week" or "Show All", plus previous/next week navigation arrows and date-range readout.
+  - **Daily breakdown in List view**: groups outbound shipments by `ship_date` into day blocks (`Weekday — Date`) with day-level shipment count and total BDFT metrics.
+  - **Interactive Month Calendar view**: toggle between `[ List | Calendar ]` with month navigation (`←`, `Month Year`, `→`, `Today`), 7-day grid with weekend styling, status-coded shipment pills, and click-to-inspect popover with direct actions.
+  - **Real-time search**: instant client-side and API search filtering across customer, invoice #, trailer #, carrier, method, and BOL #.
+  - **Alternating BOL button**: `BolActions.tsx` refactored so active shipments display "Generate BOL" (prominent brand CTA) when `bol_count === 0`, and alternate to "View BOL" once generated (also preserved on delivered shipments). Generation flow auto-refreshes so the button flips immediately.
+  - **API enhancements**: `cutting-pilot/src/app/api/shipments/route.ts` updated to support `week` (Monday YYYY-MM-DD), `days`, `status`, and `q` parameters, returning both shipment rows and aggregate stats.
+  - Verification: `npx tsc --noEmit` and `npm run cf-build` both green.
+
 - **PXXX — v2 logistics dark-launch gate: new admin-only `logistics.v2` permission gates the
   `/v2/logistics` and `/v2/logistics/loading` pages (first-match-wins, above the granular
   `logistics.*` rules in `cutting-pilot/src/middleware.ts`). APIs unchanged. Label registered in

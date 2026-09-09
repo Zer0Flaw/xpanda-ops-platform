@@ -40,3 +40,7 @@ Foam Purchase Orders (2).xlsx
 # policy as above. The parsed geometry (element x/y/w/h, font sizes, bold weights) is committed in
 # jobs/diversitech-labels.js's DIVERSITECH_LAYOUT constant instead.
 H1840.aml
+
+# Customer invoice and freight files — kept local only (contains pricing)
+26.03 Lisma Invoice Details 4611.pdf
+LISMA Frieght Breakdown.xlsx
