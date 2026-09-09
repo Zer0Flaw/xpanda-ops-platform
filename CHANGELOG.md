@@ -1836,6 +1836,59 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX — Invoice Analytics, unit D: the page (`/v2/logistics/invoice-analytics`) — upload,
+  client-side PDF parse, submit, results (react-component-agent §9b).** Runs after unit C
+  (below); shares this section's CHANGELOG entry ordering only, not a combined commit — two
+  separate commits, each scoped to its own prompt's file list. `src/lib/logistics/
+  parseInvoicePdf.ts` (net-new, client-only) reconstructs `{lineNo, shipDate, loadNumber,
+  poText, amount}` rows from the invoice PDF's raw text layout, using a fresh copy of
+  `packingSlip.ts`'s pdf.js-loader/`groupByY`/`reconstructLine` helpers (that file is left
+  untouched per its own header note). **Found and used a real sample invoice already in the
+  repo** (`26.03 Lisma Invoice Details 4611.pdf`, root — not previously referenced by any prompt)
+  to build and validate the column-band/row-reconstruction logic end to end, rather than shipping
+  it against only the prompt's 7 hand-written examples: all 93 real line items parse, `lineNo`
+  sequence is exactly 1–93, and the sum of all 93 parsed `amount`s equals the invoice's own
+  printed `Total: $72,620.22` exactly — a strong independent correctness check the prompt itself
+  didn't call for. Three real layout problems this surfaced and fixed (none obvious from the
+  prompt's abstract column-band description): (1) the invoice's PO# column has no header label of
+  its own (an unlabeled "description" column sits between "Load #" and "PO #"), and naively
+  assigning body text to its *nearest* labeled header mis-files that column's content into
+  "Load #" — fixed by clustering all body-row x-positions first (gap-based 1D clustering) and
+  matching the 5 labeled headers to clusters by left-to-right *position*, not raw x-distance,
+  skipping the one extra (unlabeled) cluster; (2) the "PO #" header token itself sits ~60pt right
+  of where the PO # column's body text actually starts (headers are shifted, body is
+  left-aligned), which independently made *distance*-based header→column matching pick the
+  Amount column's body x instead (Amount is right-aligned and shifts left for wider dollar
+  amounts, landing closer to the PO # header token than PO #'s own body text) — same
+  position-based fix resolves this too; (3) a genuinely wrapped BOL token split mid-word across a
+  PDF line-break (`"...EXPANSION (3715-"` / `"03)"` on the next line) was being joined with a
+  space like every other line-wrap, producing `"3715- 03)"` — silently losing that BOL match
+  downstream, since -c's token regex requires the suffix digits immediately after the dash — fixed
+  by joining a wrapped cell's lines without a space whenever the previous line ends in `-`.
+  Row-to-content assignment also deliberately deviates from the prompt's literal "this row's
+  top-y to the next row's top-y" window: real wrapped `PO #` cells wrap both *above and below*
+  their own row's numeric baseline (confirmed on row 4 of the real PDF — a 3-line cell with one
+  line above baseline, one at it, one below), so every item is assigned to whichever row's `#`
+  baseline is nearest, not a fixed y-range. End-to-end validation against real data: feeding all
+  93 reconstructed `poText` values through -c's `extractBolTokens` finds at least one token on 85
+  of 93 lines; the 8 zero-token lines are exactly the ones whose PO# cell is a bare date
+  (`"(03/25/26)"` etc.) — matching the prompt's own documented "no BOL, correct behavior" case,
+  not a parser gap. **`InvoiceAnalytics.tsx`** renders the upload dropzone (idle → parsing →
+  submitting → done/error state machine), the match-rate banner, 4 summary cards (matched-line
+  averages labeled as such), the line table (muted row + `note` tooltip for excluded lines), and
+  both flag panels with empty states — all keyed to -c's response contract exactly. `miles ===
+  null` (not a literal `matchStatus` string) is what drives the "mileage unavailable" row
+  rendering, matching how -c's route actually reports an ORS failure (see -c's entry below for
+  why). **No Seal Express sample invoice was available in the repo** (only the one real Lisma
+  PDF) — the column layout code is written to the same vendor-agnostic column-detection rule the
+  prompt specifies for both, but only one of the two vendors' real layouts was actually exercised;
+  flagging this explicitly rather than letting a green build imply both were tested. `npx tsc
+  --noEmit` and `npm run cf-build` both green. Single commit: the 3 net-new files +
+  `CHANGELOG.md` + `BACKLOG.md`, staged by explicit path (two pre-existing unrelated
+  uncommitted files — `DockBoard.tsx`, `DockAssignmentCard.tsx` — left untouched, same standing
+  precedent). **Not pushed** — held on unit C's migrations + `ORS_API_KEY` secret (see below);
+  terminates at "Committed on main. Push only after -c's migrations + ORS secret are confirmed."
+
 - **PXXX — Invoice Analytics, unit C: schema + BOL-token resolver + persist/flags API
   (next-platform-agent §9a + database-api-agent §9, two migrations authored not run).** Replaces
   the LISMA freight-tracking spreadsheet. New `DB_Migrations/geocode_cache.sql` and
