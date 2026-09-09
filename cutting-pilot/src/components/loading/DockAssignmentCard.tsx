@@ -23,6 +23,11 @@ interface DockAssignmentCardProps {
   onTrailerChange: (a: DockAssignment, value: string) => void;
   onViewBol: (a: DockAssignment) => void;
   showArchive?: boolean;
+  teamView?: boolean;
+  isDragging?: boolean;
+  draggable?: boolean;
+  onCardDragStart?: (e: React.DragEvent) => void;
+  onCardDragEnd?: () => void;
 }
 
 function formatShipDay(iso: string): string {
@@ -44,6 +49,11 @@ export default function DockAssignmentCard({
   onTrailerChange,
   onViewBol,
   showArchive = false,
+  teamView = false,
+  isDragging = false,
+  draggable: isDraggable = false,
+  onCardDragStart,
+  onCardDragEnd,
 }: DockAssignmentCardProps) {
   const variant = statusVariant(a.loading_status);
   const next = nextLoadingStatus(a.loading_status);
@@ -60,13 +70,82 @@ export default function DockAssignmentCard({
     setTrailerDraft(a.trailer_number ?? "");
   }, [a.trailer_number]);
 
+  if (teamView) {
+    return (
+      <div
+        className="rounded-md border px-3 py-3 space-y-3 text-left w-full transition-shadow"
+        style={{
+          background: `linear-gradient(0deg, ${variant.border}1a, ${variant.border}1a), var(--surface)`,
+          borderColor: variant.border,
+          borderLeftWidth: 4,
+        }}
+      >
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <span className="font-mono tabular-nums text-sm font-bold truncate" style={{ color: variant.text }}>
+              {a.invoice_number ? `INV# ${a.invoice_number}` : "No INV#"}
+            </span>
+            {showLoadCount && (
+              <span className="font-mono tabular-nums text-xs font-bold text-[#6366f1] px-1 bg-[#e0e7ff] rounded">
+                {a.load_number ?? 1} of {a.load_count}
+              </span>
+            )}
+          </div>
+          <span
+            className="shrink-0 text-xs font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+            style={{ backgroundColor: variant.bg, color: variant.text, border: `1px solid ${variant.border}` }}
+          >
+            {variant.label}
+          </span>
+        </div>
+        <div
+          className="text-sm text-text font-medium leading-tight"
+          title={a.customer ?? "Unknown customer"}
+        >
+          {a.customer || "Unknown customer"}
+        </div>
+        <div className="pt-1">
+          {a.loading_status === "not_started" && (
+            <button
+              type="button"
+              onClick={() => onAdvance(a, "loading")}
+              className="h-12 w-full rounded-lg border-none bg-[var(--primary-bg)] text-base font-bold text-[var(--primary-text)] cursor-pointer hover:opacity-90 transition-opacity flex items-center justify-center"
+            >
+              Start Loading
+            </button>
+          )}
+          {a.loading_status === "loading" && (
+            <button
+              type="button"
+              onClick={() => onAdvance(a, "loaded")}
+              className="h-12 w-full rounded-lg border border-[#f59e0b] bg-[#fef3c7] text-base font-bold text-[#92400e] cursor-pointer hover:opacity-90 transition-opacity flex items-center justify-center"
+            >
+              Mark Loaded
+            </button>
+          )}
+          {a.loading_status === "loaded" && (
+            <div className="h-12 w-full rounded-lg border border-[#10b981] bg-[#d1fae5] text-base font-bold text-[#065f46] flex items-center justify-center">
+              Ready ✓
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
+      draggable={isDraggable}
+      onDragStart={onCardDragStart}
+      onDragEnd={onCardDragEnd}
       className="rounded-md border px-2 py-1.5 space-y-1 text-left w-full transition-shadow"
       style={{
         background: `linear-gradient(0deg, ${variant.border}1a, ${variant.border}1a), var(--surface)`,
         borderColor: variant.border,
         borderLeftWidth: 4,
+        opacity: isDragging ? 0.5 : 1,
+        transform: isDragging ? 'scale(0.95)' : 'none',
+        cursor: isDraggable ? 'grab' : undefined,
       }}
     >
       <div className="flex items-center justify-between gap-1">

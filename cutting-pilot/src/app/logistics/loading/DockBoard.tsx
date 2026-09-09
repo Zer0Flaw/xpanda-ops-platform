@@ -51,6 +51,9 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [teamView, setTeamView] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
 
   const [bayModalTarget, setBayModalTarget] = useState<DockAssignment | null>(null);
   const [checklistTarget, setChecklistTarget] = useState<DockAssignment | null>(null);
@@ -154,6 +157,56 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
     setViewerTarget({ jobId: a.job_id, loadNumber: a.load_number });
   }
 
+  function cardDraggable(a: DockAssignment): boolean {
+    if (teamView) return false;
+    // Terminal statuses are never draggable
+    if (["in_transit", "delivered", "archived"].includes(a.loading_status)) return false;
+    // Yard cards use their explicit "Move back to bay" button instead
+    if (a.location === "yard") return false;
+    // Awaiting cards can only be dragged by managers (assigns to bay)
+    if (a.loading_status === "awaiting" && !canManage) return false;
+    return true;
+  }
+
+  function handleDragStart(a: DockAssignment, e: React.DragEvent) {
+    e.dataTransfer.setData("text/plain", a.id);
+    e.dataTransfer.effectAllowed = "move";
+    setDraggingId(a.id);
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null);
+    setDragOverTarget(null);
+  }
+
+  function handleDragOver(targetId: string, e: React.DragEvent) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverTarget(targetId);
+  }
+
+  async function handleDrop(targetId: string, e: React.DragEvent) {
+    e.preventDefault();
+    setDraggingId(null);
+    setDragOverTarget(null);
+    const assignmentId = e.dataTransfer.getData("text/plain");
+    if (!assignmentId) return;
+    const a = assignments.find((x) => x.id === assignmentId);
+    if (!a) return;
+
+    if (targetId === "awaiting") {
+      // Drop to awaiting queue — unassign bay
+      if (a.loading_status === "awaiting" && !a.bay_id) return; // already there
+      if (await putAssignment(a.id, { bay_id: null, loading_status: "awaiting" })) load();
+    } else {
+      // Drop to a bay
+      if (a.bay_id === targetId && a.loading_status !== "awaiting") return; // already in this bay
+      const body: Record<string, unknown> = { bay_id: targetId };
+      if (a.loading_status === "awaiting") body.loading_status = "not_started";
+      if (await putAssignment(a.id, body)) load();
+    }
+  }
+
   const set = showAll ? assignments : assignments.filter((a) => inCurrentWeek(a.ship_date));
 
   const awaiting = set.filter((a) => a.loading_status === "awaiting");
@@ -174,7 +227,24 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
     onArchive: handleArchive,
     onTrailerChange: handleTrailerChange,
     onViewBol: handleViewBol,
+    teamView,
   };
+
+  function renderCard(a: DockAssignment, extraProps?: { showArchive?: boolean }) {
+    const isDraggableCard = cardDraggable(a);
+    return (
+      <DockAssignmentCard
+        key={a.id}
+        a={a}
+        {...cardHandlers}
+        {...extraProps}
+        isDragging={draggingId === a.id}
+        draggable={isDraggableCard}
+        onCardDragStart={(e) => handleDragStart(a, e)}
+        onCardDragEnd={handleDragEnd}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-bg">
@@ -189,13 +259,22 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
       <div className="flex-1 w-full max-w-screen-2xl mx-auto px-4 py-6 space-y-5">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <h1 className="text-xl font-semibold text-text">Loading dashboard</h1>
-          <button
-            type="button"
-            onClick={() => setShowAll((v) => !v)}
-            className="h-8 px-3 rounded-md border border-[var(--input-border)] bg-[var(--card-bg)] text-text text-xs font-semibold cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
-          >
-            {showAll ? "Show all" : "This week"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setTeamView((v) => !v)}
+              className="h-8 px-3 rounded-md border border-[var(--input-border)] bg-[var(--card-bg)] text-text text-xs font-semibold cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
+            >
+              {teamView ? "Manager view" : "Team view"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="h-8 px-3 rounded-md border border-[var(--input-border)] bg-[var(--card-bg)] text-text text-xs font-semibold cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
+            >
+              {showAll ? "Show all" : "This week"}
+            </button>
+          </div>
         </div>
 
         {loadError && (
@@ -216,36 +295,62 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
 
         {!loading && !loadError && (
           <>
-            <section className="space-y-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Awaiting trailer assignment
-              </h2>
-              {awaiting.length === 0 ? (
-                <p className="text-sm text-text-faint italic px-1">Nothing waiting on a bay.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {awaiting.map((a) => (
-                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
-                      <DockAssignmentCard a={a} {...cardHandlers} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
+            {!teamView && (
+              <section
+                className={`space-y-2 rounded-xl p-2 transition-colors ${
+                  draggingId && canManage
+                    ? dragOverTarget === "awaiting"
+                      ? "border-2 border-dashed border-[var(--primary-bg)] bg-[var(--primary-bg)]/5"
+                      : "border-2 border-dashed border-[var(--line)]"
+                    : "border-2 border-transparent"
+                }`}
+                onDragOver={draggingId && canManage ? (e) => handleDragOver("awaiting", e) : undefined}
+                onDragLeave={draggingId && canManage ? () => setDragOverTarget(null) : undefined}
+                onDrop={draggingId && canManage ? (e) => handleDrop("awaiting", e) : undefined}
+              >
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Awaiting trailer assignment
+                </h2>
+                {awaiting.length === 0 ? (
+                  <p className="text-sm text-text-faint italic px-1">Nothing waiting on a bay.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {awaiting.map((a) => (
+                      <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                        {renderCard(a)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
 
             <section className="space-y-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Bays</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted px-2">Bays</h2>
               {bays.length === 0 ? (
-                <p className="text-sm text-text-faint italic px-1">No bays configured.</p>
+                <p className="text-sm text-text-faint italic px-3">No bays configured.</p>
               ) : (
-                <div className="overflow-x-auto pb-2">
+                <div className="overflow-x-auto pb-2 px-2">
                   <div className="grid grid-cols-1 md:grid-cols-6 gap-3 min-w-0 md:min-w-[1080px]">
                     {bays.map((bay) => {
                       const bayAssignments = set.filter(
                         (a) => a.bay_id === bay.id && BAY_ACTIVE_STATUSES.includes(a.loading_status)
                       );
+                      const isDragOver = dragOverTarget === bay.id;
                       return (
-                        <div key={bay.id} className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] flex flex-col min-w-0">
+                        <div
+                          key={bay.id}
+                          className={`rounded-xl border flex flex-col min-w-0 transition-colors ${
+                            draggingId
+                              ? isDragOver
+                                ? "border-2 border-dashed border-[var(--primary-bg)] bg-[var(--primary-bg)]/5"
+                                : "border-2 border-dashed border-[var(--line)] bg-[var(--surface-2)]/50"
+                              : "border-[var(--line)] bg-[var(--surface-2)]"
+                          }`}
+                          onDragOver={draggingId ? (e) => handleDragOver(bay.id, e) : undefined}
+                          onDragLeave={draggingId ? () => setDragOverTarget(null) : undefined}
+                          onDrop={draggingId ? (e) => handleDrop(bay.id, e) : undefined}
+                        >
                           <div className="p-2 border-b border-[var(--line)] text-center font-bold text-sm text-text">
                             Bay {bay.bay_number}
                           </div>
@@ -253,7 +358,9 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
                             {bayAssignments.length === 0 ? (
                               <p className="text-xs text-text-faint italic text-center py-6">Empty</p>
                             ) : (
-                              bayAssignments.map((a) => <DockAssignmentCard key={a.id} a={a} {...cardHandlers} />)
+                              bayAssignments.map((a) => (
+                                <div key={a.id}>{renderCard(a)}</div>
+                              ))
                             )}
                           </div>
                         </div>
@@ -264,50 +371,54 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
               )}
             </section>
 
-            <section className="space-y-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Yard</h2>
-              {yard.length === 0 ? (
-                <p className="text-sm text-text-faint italic px-1">No trailers in the yard.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {yard.map((a) => (
-                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
-                      <DockAssignmentCard a={a} {...cardHandlers} />
+            {!teamView && (
+              <>
+                <section className="space-y-2 px-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Yard</h2>
+                  {yard.length === 0 ? (
+                    <p className="text-sm text-text-faint italic px-1">No trailers in the yard.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {yard.map((a) => (
+                        <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                          {renderCard(a)}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                  )}
+                </section>
 
-            <section className="space-y-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">In transit</h2>
-              {transit.length === 0 ? (
-                <p className="text-sm text-text-faint italic px-1">Nothing in transit.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {transit.map((a) => (
-                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
-                      <DockAssignmentCard a={a} {...cardHandlers} />
+                <section className="space-y-2 px-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">In transit</h2>
+                  {transit.length === 0 ? (
+                    <p className="text-sm text-text-faint italic px-1">Nothing in transit.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {transit.map((a) => (
+                        <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                          {renderCard(a)}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                  )}
+                </section>
 
-            <section className="space-y-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Delivered</h2>
-              {delivered.length === 0 ? (
-                <p className="text-sm text-text-faint italic px-1">Nothing delivered yet.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {delivered.map((a) => (
-                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
-                      <DockAssignmentCard a={a} {...cardHandlers} showArchive />
+                <section className="space-y-2 px-2">
+                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Delivered</h2>
+                  {delivered.length === 0 ? (
+                    <p className="text-sm text-text-faint italic px-1">Nothing delivered yet.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {delivered.map((a) => (
+                        <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                          {renderCard(a, { showArchive: true })}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </section>
+                  )}
+                </section>
+              </>
+            )}
           </>
         )}
       </div>
