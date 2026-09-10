@@ -1836,6 +1836,43 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-h — Invoice Analytics: Financials tab (charts + accountant-grade breakdowns)
+  (react-component-agent §9b, pure-UI, no backend/dep/migration change — all of that landed in
+  -g).** Third tab (`Upload | History | Financials`) added to `InvoiceAnalytics.tsx`'s existing
+  strip; widened the tab union, added `FinancialsPanel` import + render branch. New
+  `src/components/logistics/FinancialsPanel.tsx` fetches `GET /v2/api/logistics/analytics` once on
+  mount (loading/error/data states, errors surfaced as text). Layout top to bottom: totals summary
+  cards (spend/lines/match rate/blended $/mi), a `recharts` `ComposedChart` monthly trend (spend
+  bars + blended-$/mi line on a second Y axis), a horizontal `BarChart` of top-cost lanes, a
+  per-ZIP cost table, and the same-ZIP-variance + match-rate/data-quality widgets side by side on
+  `lg`. Every widget carries an `InfoTip`. Per-ZIP rows and same-ZIP-variance rows share one
+  `drillZip` state and a single `ZipLinesModal` instance. **Three fixes made past the prompt's
+  literal spec, all `advisor()`-caught before commit**: (1) verified `invoice_date` really is
+  stored ISO (`parseInvoicePdf.ts`'s `toIsoDate()` normalizes `M/D/YY(YY)` → `YYYY-MM-DD` before
+  `invoice/route.ts` ever binds it) before trusting -g's `substr(...,1,7)` month grouping — this
+  could have silently produced a garbage X axis on a non-ISO date and was checked, not assumed;
+  (2) the `$/1000`-scaled axis tick formatters (monthly spend axis, top-lanes axis) floored to
+  `$0k` for any value under $500 — exactly the "looks broken on sparse data" failure the prompt
+  calls a hard requirement on today's low-volume dataset; replaced with an adaptive `spendTick()`
+  (`$X` under $1,000, `$X.Xk` at/above) on both axes; (3) recharts renders `fill`/`stroke` as raw
+  SVG presentation attributes, not CSS, so `var(--brand)`/`var(--accent)` was an unverified bet on
+  browser-dependent custom-property resolution there (unlike an ordinary CSS rule) — resolved both
+  tokens once via `getComputedStyle(document.documentElement)` on mount into local state instead,
+  falling back to their light-theme hex if empty; doesn't track a live theme toggle after mount,
+  acceptable since the panel remounts on tab switch. Chart tooltips/formatters are null-safe
+  (`money`/`milesFmt`/`rate` all guard `null`/non-finite) since `topLanes.blendedPricePerMile` can
+  be SQL NULL on a divide-by-zero. `npx tsc --noEmit` + `npm run cf-build` green (re-run clean
+  after all three fixes) — `/logistics/invoice-analytics` grew from 97 kB to 214 kB first-load with
+  recharts now actually imported (static import per the prompt; Upload is the default tab and now
+  carries that weight too — flagging for Steve, not a defect). Single commit: `InvoiceAnalytics.tsx`
+  (edited, tab wiring only) + `FinancialsPanel.tsx` (new) + `CHANGELOG.md` + `BACKLOG.md`, staged
+  by explicit path. `BACKLOG.md`: removed the price/mile-over-time-chart item (closed — the monthly
+  trend chart delivers it and recharts settles the charting-lib question the item named); added
+  "Financials: vendor breakdown widget — deferred until multi-vendor data exists (currently 1
+  vendor)"; no separate "Financials tab" item existed to remove (grep-confirmed). **Terminates at
+  ready-to-push per this prompt's own instruction — pushed together with -g** per Steve's "read and
+  execute... then commit and push" instruction, same session.
+
 - **PXXX-g — Invoice Analytics: analytics endpoint + recharts + `InfoTip` primitive (infra for the
   Financials tab) (next-platform-agent §9a + react-component-agent §9b, net-new backend + net-new
   UI primitive + tooltip retrofit, no DB migration — reads the existing `freight_invoice_lines`

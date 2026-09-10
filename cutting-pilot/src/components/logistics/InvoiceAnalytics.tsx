@@ -10,6 +10,7 @@ import PlatformHeader from "@/components/PlatformHeader";
 import InfoTip from "@/components/InfoTip";
 import { parseInvoicePdf, type ParsedInvoice } from "@/lib/logistics/parseInvoicePdf";
 import ZipLinesModal from "@/components/logistics/ZipLinesModal";
+import FinancialsPanel from "@/components/logistics/FinancialsPanel";
 
 interface Props {
   userName: string;
@@ -102,7 +103,7 @@ const STATUS_LABEL: Record<MatchStatus, string> = {
 };
 
 export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Props) {
-  const [tab, setTab] = useState<"upload" | "history">("upload");
+  const [tab, setTab] = useState<"upload" | "history" | "financials">("upload");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [dragActive, setDragActive] = useState(false);
@@ -189,7 +190,7 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
         <h1 className="text-xl font-semibold text-text">Invoice Analytics</h1>
 
         <div role="tablist" className="flex gap-1 border-b border-[var(--card-border)]">
-          {(["upload", "history"] as const).map((t) => (
+          {(["upload", "history", "financials"] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -202,7 +203,7 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
                   : "border-transparent text-muted hover:text-text"
               }`}
             >
-              {t === "upload" ? "Upload" : "History"}
+              {t === "upload" ? "Upload" : t === "history" ? "History" : "Financials"}
             </button>
           ))}
         </div>
@@ -278,6 +279,8 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
         )}
 
         {tab === "history" && <HistoryPanel />}
+
+        {tab === "financials" && <FinancialsPanel />}
       </div>
     </div>
   );
