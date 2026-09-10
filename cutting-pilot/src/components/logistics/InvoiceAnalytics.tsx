@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FileUp } from "lucide-react";
 import PlatformHeader from "@/components/PlatformHeader";
+import InfoTip from "@/components/InfoTip";
 import { parseInvoicePdf, type ParsedInvoice } from "@/lib/logistics/parseInvoicePdf";
 import ZipLinesModal from "@/components/logistics/ZipLinesModal";
 
@@ -381,7 +382,10 @@ function FlagsPanels({ flags }: { flags: InvoiceResult["flags"] }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div className="rounded-lg border border-[var(--card-border)] bg-surface p-4">
-        <h2 className="text-sm font-semibold text-text mb-3">Same-ZIP price variance</h2>
+        <div className="flex items-center gap-1 mb-3">
+          <h2 className="text-sm font-semibold text-text">Same-ZIP price variance</h2>
+          <InfoTip label="ZIP codes where different orders were billed different amounts. Different delivery sites can share a ZIP, so a spread isn't always a mispricing — open a row to see the orders." />
+        </div>
         {flags.zipVariance.length === 0 ? (
           <p className="text-sm text-muted">No variance flagged.</p>
         ) : (
@@ -413,7 +417,10 @@ function FlagsPanels({ flags }: { flags: InvoiceResult["flags"] }) {
       </div>
 
       <div className="rounded-lg border border-[var(--card-border)] bg-surface p-4">
-        <h2 className="text-sm font-semibold text-text mb-3">Distance/price inversions</h2>
+        <div className="flex items-center gap-1 mb-3">
+          <h2 className="text-sm font-semibold text-text">Distance/price inversions</h2>
+          <InfoTip label="Lanes where a nearer ZIP (fewer miles) was billed as much as or more than a farther ZIP — a possible overcharge to review." />
+        </div>
         {flags.inversions.length === 0 ? (
           <p className="text-sm text-muted">No inversions flagged.</p>
         ) : (

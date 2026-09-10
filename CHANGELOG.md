@@ -1836,6 +1836,37 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-g — Invoice Analytics: analytics endpoint + recharts + `InfoTip` primitive (infra for the
+  Financials tab) (next-platform-agent §9a + react-component-agent §9b, net-new backend + net-new
+  UI primitive + tooltip retrofit, no DB migration — reads the existing `freight_invoice_lines`
+  table).** Added `recharts` (`^3.10.1`, resolved) as a dependency — client-only, not yet imported
+  by anything (no chart renders until PXXX-h). New route `src/app/api/logistics/analytics/
+  route.ts` — `GET /v2/api/logistics/analytics` returns `{ totals, monthly[], topLanes[], perZip[],
+  zipVariance[] }` over the full stored dataset; `perZip`/`zipVariance` reuse `computePerZip`/
+  `computeZipVariance` from `src/lib/logistics/flags.ts` (same math as `flags/route.ts`, no drift).
+  Auto-gated `logistics.v2` via the existing `{ prefix: "/v2/api/logistics" }` middleware rule
+  (confirmed present, no middleware edit). New shared `src/components/InfoTip.tsx` — hover/focus on
+  desktop, tap-to-toggle on touch, closes on Escape/outside-tap, `role="tooltip"` +
+  `aria-describedby`, ≥44px hit area. Retrofitted onto `InvoiceAnalytics.tsx`'s two existing flag
+  widgets (Same-ZIP price variance, Distance/price inversions). **Two fixes made past the prompt's
+  literal spec, both `advisor()`-caught before commit**: (1) the monthly-aggregate query grouped on
+  `substr(invoice_date,1,7)` with no NULL guard — `invoice_date` is nullable (confirmed via the
+  `invoice/route.ts` insert binding `invoiceDate ?? null`), and SQLite's `GROUP BY` collapses NULL
+  substrings into one real `{month: null, ...}` row, which would have rendered as a blank X-axis
+  category in -h's monthly chart on today's 1-month dataset — added `WHERE invoice_date IS NOT
+  NULL`; (2) totals' `blendedPricePerMile` numerator (`matchedSpend`, summed over ALL matched rows)
+  and denominator (`totalMiles`, summed over matched rows with SUM skipping NULLs) covered
+  different row populations — a matched row with NULL miles (rendered elsewhere as "mileage
+  unavailable") contributed dollars with no offsetting miles, biasing the headline blended rate
+  high; added `AND miles IS NOT NULL` to the numerator's CASE to match `topLanes`' existing guard,
+  a deliberate deviation from the prompt's literal unguarded SQL since this is the one figure
+  labeled "accountant-grade." `npx tsc --noEmit` + `npm run cf-build` green (re-run clean after both
+  fixes). Single commit: `package.json`+`package-lock.json` (recharts) + `analytics/route.ts` (new)
+  + `InfoTip.tsx` (new) + `InvoiceAnalytics.tsx` (edited, tooltip retrofit only) + `CHANGELOG.md`,
+  staged by explicit path. No matching `BACKLOG.md` item to remove (the price/mile-over-time-chart
+  item stays open — closes with -h, which actually renders the chart). **Terminates at
+  ready-to-push per this prompt's own instruction — pushed together with -h**, see -h's entry.
+
 - **PXXX-f — Invoice Analytics: historical view (Upload | History tabs) (react-component-agent
   §9b, pure-UI edit, no backend/DB change).** Ran after PXXX-e (below), reusing its `ZipLinesModal`
   drill-down. Added a two-tab shell (`Upload` | `History`) to `InvoiceAnalytics.tsx` — the existing
