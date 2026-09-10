@@ -1857,6 +1857,30 @@ Entries within each module are ordered by prompt # descending (newest first).
   loads, check for a 429/quota response before assuming the fix itself didn't work.
   `npx tsc --noEmit` + `npm run cf-build` both green.
 
+- **PXXX-o — Invoice Analytics: remove the horizontal scrollbar + polish print output
+  (react-component-agent §9b, UI/CSS only, no DB migration).** The results table overflowed its
+  `max-w-[1100px]` content container (`LineTable` was `min-w-[900px]` with ~10
+  `whitespace-nowrap` columns), forcing a horizontal scrollbar via `overflow-x-auto`. Widened the
+  content wrapper to `max-w-[1500px]` (affects all three tabs — Financials' `ResponsiveContainer`
+  charts just get more room) and dropped `LineTable`'s `min-w-[900px]` so it uses full width;
+  `overflow-x-auto` stays as a safety net for narrow viewports. Print polish extends the existing
+  `@media print` block in `globals.css` (added PXXX-k, not duplicated): a top-level `@page {
+  size: landscape; margin: 0.4in; }` (kept outside `@media print` — nesting `@page` inside a
+  media block is unreliable across browsers/minifiers; verified post-build the rule survives
+  Next's CSS minifier intact via `grep -o '@page[^}]*}' .next/static/css/*.css`), un-truncates
+  the PO-text column for print, tightens table font-size/borders, and reveals a new `.print-only`
+  header (hidden on screen, `display:block!important` in print). The header — a title line
+  (`Freight Invoice — {vendor} #{invoiceNumber}` for the upload view, `Freight — {month}` for
+  History) plus a one-line matched/total/avg-$-per-mile summary — renders from
+  `InvoiceResultToolbar.tsx` (already shared by both screens, already holds `result`/`label`) as
+  a sibling of its existing `no-print` button row, using the `showAnnual` prop (only History
+  passes it) to pick which title format to render — correct today since only History sets
+  `showAnnual`, but that prop means "show the annual export option," not "this is the monthly
+  view," so a future caller passing `showAnnual` on the upload screen would get the wrong title;
+  worth a real discriminator prop if that ever happens. Confirmed via grep that no `no-print`
+  ancestor wraps the toolbar (only the page header and tab bar are `no-print`), so the new header
+  isn't accidentally suppressed in print. `npx tsc --noEmit` + `npm run cf-build` both green.
+
 - **PXXX-c — v2 Loading Dashboard: Pull Job flow + photo gallery lightbox (next-platform-agent
   §9a for the new route + react-component-agent §9b for the UI, no DB migration).** **§9a**: new
   `GET /v2/api/jobs?search=` (`src/app/api/jobs/route.ts`) — ports only the search branch of

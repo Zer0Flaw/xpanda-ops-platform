@@ -199,7 +199,7 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
         />
       </div>
 
-      <div className="flex-1 w-full max-w-[1100px] mx-auto px-4 py-6 space-y-6">
+      <div className="flex-1 w-full max-w-[1500px] mx-auto px-4 py-6 space-y-6">
         <h1 className="text-xl font-semibold text-text">Invoice Analytics</h1>
 
         <div role="tablist" className="no-print flex gap-1 border-b border-[var(--card-border)]">
@@ -382,7 +382,7 @@ function SummaryCards({ summary }: { summary: InvoiceResult["summary"] }) {
 function LineTable({ lines }: { lines: ResultLine[] }) {
   return (
     <div className="rounded-lg border border-[var(--card-border)] bg-surface overflow-x-auto">
-      <table className="w-full text-sm min-w-[900px]">
+      <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs text-muted border-b border-[var(--card-border)]">
             <th className="px-3 py-2">#</th>

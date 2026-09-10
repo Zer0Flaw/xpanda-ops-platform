@@ -15,6 +15,8 @@ interface Props {
   year?: string;
 }
 
+const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 export default function InvoiceResultToolbar({ result, label, showAnnual, year }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,35 +40,48 @@ export default function InvoiceResultToolbar({ result, label, showAnnual, year }
     }
   }
 
+  const title = showAnnual
+    ? `Freight — ${label}`
+    : `Freight Invoice — ${result.invoice.vendor || "Unknown vendor"} #${result.invoice.invoiceNumber}`;
+
   return (
-    <div className="no-print flex flex-wrap items-center justify-end gap-2">
-      {error && <span className="text-xs text-[var(--warn-text)]">{error}</span>}
-      {busy && <span className="text-xs text-muted">Building annual report…</span>}
-      <button
-        type="button"
-        onClick={() => window.print()}
-        className="min-h-[44px] px-4 rounded-md border border-[var(--card-border)] bg-surface text-text text-sm font-medium hover:bg-[var(--surface-2)] inline-flex items-center gap-2 cursor-pointer"
-      >
-        <Printer size={16} aria-hidden="true" />
-        Print
-      </button>
-      {showAnnual ? (
-        <SplitButton
-          label="Export (.xlsx)"
-          onClick={() => buildMonthWorkbook(result, label)}
-          items={[{ label: "Annual report (.xlsx)", onClick: downloadAnnual }]}
-          disabled={busy}
-        />
-      ) : (
+    <>
+      <div className="print-only text-black">
+        <div className="text-sm font-semibold">{title}</div>
+        <div className="text-xs">
+          {result.summary.matchedCount}/{result.summary.lineCount} matched · Total {money(result.summary.totalAmount)} · Avg{" "}
+          {result.summary.avgPricePerMile ? `$${result.summary.avgPricePerMile.toFixed(2)}/mi` : "—"}
+        </div>
+      </div>
+      <div className="no-print flex flex-wrap items-center justify-end gap-2">
+        {error && <span className="text-xs text-[var(--warn-text)]">{error}</span>}
+        {busy && <span className="text-xs text-muted">Building annual report…</span>}
         <button
           type="button"
-          onClick={() => buildMonthWorkbook(result, label)}
-          className="min-h-[44px] px-4 rounded-md bg-[var(--brand)] text-white text-sm font-medium hover:bg-[var(--brand-hover)] inline-flex items-center gap-2 cursor-pointer"
+          onClick={() => window.print()}
+          className="min-h-[44px] px-4 rounded-md border border-[var(--card-border)] bg-surface text-text text-sm font-medium hover:bg-[var(--surface-2)] inline-flex items-center gap-2 cursor-pointer"
         >
-          <Download size={16} aria-hidden="true" />
-          Export (.xlsx)
+          <Printer size={16} aria-hidden="true" />
+          Print
         </button>
-      )}
-    </div>
+        {showAnnual ? (
+          <SplitButton
+            label="Export (.xlsx)"
+            onClick={() => buildMonthWorkbook(result, label)}
+            items={[{ label: "Annual report (.xlsx)", onClick: downloadAnnual }]}
+            disabled={busy}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => buildMonthWorkbook(result, label)}
+            className="min-h-[44px] px-4 rounded-md bg-[var(--brand)] text-white text-sm font-medium hover:bg-[var(--brand-hover)] inline-flex items-center gap-2 cursor-pointer"
+          >
+            <Download size={16} aria-hidden="true" />
+            Export (.xlsx)
+          </button>
+        )}
+      </div>
+    </>
   );
 }
