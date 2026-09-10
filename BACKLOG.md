@@ -264,6 +264,13 @@
   deep-linking was ported but `?shipment=` was not (adding the lookup mode would be an API
   change PXXX-b's own scope excluded). Add an `id=` branch to `GET /v2/api/shipments` (mirroring
   legacy's shape) to close this.
+- [ ] **PXXX-c finding — `?assignment=` deep link can't reach an `archived` row.** The
+  `include_archived=1`/`showAll=true` fetch-and-filter widening the deep-link resolver applies
+  covers every Overview/Team View grouping except `loading_status === "archived"`, which matches
+  no section filter in either view, so an archived target still renders nothing to scroll to or
+  highlight. Legacy dodges this because it opens the Shipping Info modal directly (no DOM
+  membership needed); this port's scroll+highlight approach (a deliberate -b deviation, see
+  above) can't. Not fixed here — flagged for Steve alongside the `?shipment=` gap.
 - [ ] **Standing parity rule while legacy and v2 coexist**: any change to BOL rendering must be mirrored across BOTH `logistics/bol-shared.js` and `cutting-pilot/src/lib/bolShared.ts` until legacy is archived.
 - [ ] **P435 finding — adopt `patch-package` (or equivalent) for `cutting-pilot`.** The local `main` `node_modules` carries an uncommitted, undocumented hand patch to `@opennextjs/aws`'s `dist/plugins/edge.js` (`file.replace(/\\/g, '/')` before embedding an absolute path into a generated `require(...)` string) that fixes a real upstream bug: any Windows build path containing `\x` followed by a non-hex letter (e.g. this repo's own `...\xpanda-...` directory name) is an invalid hex-escape and hard-fails `npm run cf-build`'s "Bundling middleware function" step. Because `node_modules/` is gitignored, this patch isn't captured anywhere and silently vanishes on a fresh `npm install`/clean clone — confirmed by reproducing the failure in a brand-new `v2-logistics` worktree after a clean `npm install`. Not a CI risk today (GitHub Actions builds on Linux, where `path.join` never produces a backslash), but it will bite the next fresh Windows dev checkout the same way it just did here. `patch-package` (generate a `patches/@opennextjs+aws+3.4.0.patch`, add a `postinstall` script) would make the fix survive `npm install`.
 

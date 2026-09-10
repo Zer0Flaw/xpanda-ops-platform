@@ -10,22 +10,16 @@
 // and refetches after every mutation (recompute, don't replay -- same rule as unit 2's dashboard
 // and the v2 cutting boards).
 //
-// Deliberate scope cuts from legacy/loading.html (documented in CHANGELOG.md/BACKLOG.md):
-//   - PXXX-a (this pass) ported "Loading Team View" 1:1 as its own two-screen stack
-//     (TeamView.tsx) -- the prior single-responsive-board design (a boolean flag on this
-//     component hiding sections on the same 6-column grid) is retired; see TeamView.tsx/
-//     BayListItem.tsx.
-//   - PXXX-b (this pass) ported search, sort, per-section collapse+persistence, the Shipping
-//     Info modal, and touch drag-and-drop for Overview. Legacy's `?shipment=` notification deep
-//     link is NOT ported: it needs a single-shipment-by-id lookup
-//     (`GET /api/shipments?id=`) that v2's `/v2/api/shipments` route doesn't support (only
-//     `?job_id=`), and adding it would be an API change this prompt's own scope excludes --
-//     logged to BACKLOG.md. `?assignment=` deep-linking (scroll + highlight, no modal auto-open
-//     -- a deliberate -b deviation from legacy's auto-opened Shipping Info modal) IS ported.
-//   - PXXX-c (this pass) added the "+ Pull Job" search-and-onboard flow (new
-//     GET /v2/api/jobs?search=, manager-only, visible in both Overview and Team View) and the
-//     photo gallery lightbox (view already-uploaded photos, wired to a new Photos action button
-//     -- there was no such button before this pass, only the passive count badge).
+// Parity notes / remaining gap (full detail in CHANGELOG.md; see PXXX-a/-b/-c entries):
+//   Team View, search/sort/collapse, the Shipping Info modal, touch drag-and-drop, the
+//   "+ Pull Job" flow, and the photo gallery lightbox are all shipped -- ported from
+//   logistics/loading.html across PXXX-a/-b/-c.
+//   The one deliberate remaining cut: legacy's `?shipment=` notification deep link is NOT
+//   ported -- it needs a single-shipment-by-id lookup (`GET /api/shipments?id=`) that v2's
+//   `/v2/api/shipments` route doesn't support (only `?job_id=`), and adding it is an API change
+//   out of scope so far -- logged to BACKLOG.md. `?assignment=` deep-linking (scroll + highlight,
+//   no modal auto-open -- a deliberate deviation from legacy's auto-opened Shipping Info modal)
+//   IS ported.
 // The This Week / Show All toggle IS kept (not decorative -- without it Delivered/Awaiting grow
 // unbounded at any real data volume).
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -154,6 +148,11 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
     if (assignmentParam && assignments.some((a) => a.id === assignmentParam)) {
       const target = assignments.find((a) => a.id === assignmentParam);
       if (target?.bay_id && view === "team") setSelectedBayId(target.bay_id);
+      // The target row is very often outside the This Week filter (a notification deep link
+      // typically points at an aged-off delivered load) -- without this, the highlight/scroll
+      // below silently no-ops because the card never renders. Same intent as the
+      // include_archived=1 fetch flag above.
+      setShowAll(true);
       setHighlightedId(assignmentParam);
       setTimeout(() => {
         document
