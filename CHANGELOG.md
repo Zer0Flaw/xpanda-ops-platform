@@ -1836,6 +1836,44 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-i — Invoice Analytics: History tab becomes a month selector + full upload-fidelity
+  results view (next-platform-agent §9a + react-component-agent §9b, net-new backend + `HistoryPanel`
+  rewrite, no DB migration — reads `freight_invoice_lines`).** Scope change: History no longer shows
+  -f's cross-month aggregate perZip table (that now lives on the Financials tab, -h) — it shows a
+  month `<select>` (defaults to the most recent month) that reproduces the **exact upload results
+  view** (`MatchRateBanner`/`SummaryCards`/`LineTable`/`FlagsPanels`, the same in-file components
+  the Upload tab uses) for the chosen month, so no per-line detail is lost. New route
+  `src/app/api/logistics/month/route.ts` — `GET /v2/api/logistics/month?month=YYYY-MM` returns the
+  distinct months list plus the resolved month's `InvoiceResult`, with summary math (matched/
+  unmatched/multi counts, `totalAmount` over all rows, `avgMiles`/`avgPrice`/`avgPricePerMile` as
+  the **mean of matched-row ratios**, not blended) mirroring the POST `/invoice` route exactly so
+  Upload and History never diverge. Auto-gated `logistics.v2` via the existing middleware prefix
+  rule (confirmed present, no middleware edit). Rewrote `HistoryPanel`'s internals only; removed
+  the now-dead `PerZipEntry`/`FlagsResponse` interfaces (both only referenced by the aggregate table
+  this prompt removes). **One parity caveat worth flagging to Steve, not a bug**: the month
+  endpoint's `flags` (zip variance/inversions) are computed from *that month's* matched rows only,
+  while the POST `/invoice` route's `flags` come from the entire stored table — so History's
+  `FlagsPanels` can legitimately show fewer rows than the Upload tab showed for the same invoice at
+  ingest time. Per the prompt's own spec (and arguably more correct for a per-month view), but a
+  visible divergence from the "renders identically" framing if noticed. **`advisor()` caught one
+  real race condition before commit**: the first draft gated the *entire* panel (selector included)
+  on `loading`, so every month switch unmounted the `<select>` and re-mounted it from the still-stale
+  `payload.month` — on a slow connection the dropdown would visibly snap back to the previous month
+  before the new one landed, and the fetch had no request-ordering guard, so two fast switches
+  could resolve out of order. Fixed with a `selected` state set synchronously in `onChange` (so the
+  dropdown never disagrees with the user's click) plus a monotonic `requestIdRef` that drops any
+  response superseded by a newer request; only the results block (not the selector) is gated on
+  `loading` now, with a small inline "Loading…" indicator instead. Noted but not fixed (repo-scale
+  non-issue today): `substr(invoice_date,1,7)` in both the months `DISTINCT` query and the line
+  `WHERE` can't use an index — fine at current row counts, revisit if this table grows large.
+  `npx tsc --noEmit` + `npm run cf-build` green (re-run clean after the race-condition fix). Single
+  commit: `month/route.ts` (new) + `InvoiceAnalytics.tsx` (edited, `HistoryPanel` only) +
+  `CHANGELOG.md` + `BACKLOG.md`, staged by explicit path. `BACKLOG.md`: added the multi-invoice-month
+  header polish follow-on the prompt names (today there's 1 invoice/month; the endpoint's fallback
+  header — `"Multiple"` vendor / `"<n> invoices"` / month string — is untested against a real
+  multi-invoice month). No migration. **Terminates at ready-to-push per this prompt's own
+  instruction and Steve's "read and execute" (no push authorized this session) — not pushed.**
+
 - **PXXX-h — Invoice Analytics: Financials tab (charts + accountant-grade breakdowns)
   (react-component-agent §9b, pure-UI, no backend/dep/migration change — all of that landed in
   -g).** Third tab (`Upload | History | Financials`) added to `InvoiceAnalytics.tsx`'s existing

@@ -219,6 +219,11 @@
 - [x] PXXX (Steve to assign) — Invoice Analytics, unit C + unit D: schema, BOL-token resolver, ORS mileage/price-per-mile, cross-history flags API, and the upload/parse/results page (`/v2/logistics/invoice-analytics`). Migrations authored not run, held on `ORS_API_KEY` secret + Steve running both migrations. See `CHANGELOG.md` for full detail.
 - [ ] **Invoice Analytics — unit F: legacy bridge card.** Surface a link/summary card into the legacy LISMA-spreadsheet-adjacent pages so staff still on the old workflow can find the new tool.
 - [ ] **Invoice Analytics history date-range filter** (needs `/v2/api/logistics/flags` to accept `?from/&to`) — deferred.
+- [ ] **History: multi-invoice month header polish.** `/v2/api/logistics/month`'s fallback invoice
+  header for a month with >1 distinct invoice (`vendor: "Multiple"`, `invoiceNumber: "<n> invoices"`,
+  `invoiceDate: <month>`) is untested against a real multi-invoice month — today there's exactly 1
+  invoice/month. Revisit `MatchRateBanner`'s rendering of that fallback once a month actually holds
+  several invoices.
 - [ ] **Financials tab: vendor breakdown widget** — deferred until multi-vendor data exists (currently 1 vendor).
 - [ ] **Invoice Analytics — native driving-distance for multi-stop lines.** v1 excludes `multi_destination` lines (multiple BOL tokens resolving to different ZIPs on one invoice line) from stats entirely rather than computing a real multi-stop route distance.
 - [ ] **Invoice Analytics — no Seal Express sample invoice was available to validate unit D's PDF parser.** Only one real vendor sample (`26.03 Lisma Invoice Details 4611.pdf`) exists in the repo; the column-detection logic is written to the same vendor-agnostic rule the prompt specifies for both vendors, but Seal's actual layout was never exercised. Get a real Seal invoice and re-run the same end-to-end validation (parse → `extractBolTokens` → token count) before trusting it blind.

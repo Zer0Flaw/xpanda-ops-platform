@@ -54,19 +54,11 @@ interface InversionEntry {
   fartherAvgPrice: number;
 }
 
-interface PerZipEntry {
-  zip: string;
-  city: string;
-  count: number;
-  avgMiles: number;
-  avgPrice: number;
-  avgPricePerMile: number;
-}
-
-interface FlagsResponse {
+interface MonthResponse {
   ok: boolean;
-  flags: { zipVariance: ZipVarianceEntry[]; inversions: InversionEntry[] };
-  perZip: PerZipEntry[];
+  months: string[];
+  month: string | null;
+  result: InvoiceResult | null;
   error?: string;
 }
 
@@ -451,92 +443,86 @@ function FlagsPanels({ flags }: { flags: InvoiceResult["flags"] }) {
 function HistoryPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<FlagsResponse | null>(null);
-  const [drillZip, setDrillZip] = useState<string | null>(null);
+  const [payload, setPayload] = useState<MonthResponse | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
-  useEffect(() => {
-    let cancelled = false;
+  function loadMonth(month?: string) {
+    const id = ++requestIdRef.current;
     setLoading(true);
     setError(null);
-    fetch("/v2/api/logistics/flags")
+    const url = month ? `/v2/api/logistics/month?month=${encodeURIComponent(month)}` : "/v2/api/logistics/month";
+    fetch(url)
       .then(async (res) => {
-        const body: FlagsResponse = await res.json();
-        if (cancelled) return;
+        const body: MonthResponse = await res.json();
+        if (requestIdRef.current !== id) return; // superseded by a newer selector change
         if (!res.ok || !body.ok) {
           setError(body?.error || "Could not load invoice history.");
           return;
         }
-        setData(body);
+        setPayload(body);
+        setSelected(body.month);
       })
       .catch((e: any) => {
-        if (!cancelled) setError(e?.message || "Could not reach the server.");
+        if (requestIdRef.current !== id) return;
+        setError(e?.message || "Could not reach the server.");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (requestIdRef.current === id) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
+  }
+
+  useEffect(() => {
+    loadMonth();
   }, []);
 
-  if (loading) return <p className="text-sm text-muted">Loading history…</p>;
-  if (error) return <p className="text-sm text-[var(--warn-text)]">{error}</p>;
-  if (!data) return null;
+  if (!payload && loading) return <p className="text-sm text-muted">Loading history…</p>;
+  if (!payload && error) return <p className="text-sm text-[var(--warn-text)]">{error}</p>;
+  if (!payload) return null;
+
+  if (payload.months.length === 0) {
+    return <p className="text-sm text-muted">No invoices ingested yet.</p>;
+  }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-[var(--card-border)] bg-surface overflow-x-auto">
-        <table className="w-full text-sm min-w-[700px]">
-          <thead>
-            <tr className="text-left text-xs text-muted border-b border-[var(--card-border)]">
-              <th className="px-3 py-2">ZIP</th>
-              <th className="px-3 py-2">City</th>
-              <th className="px-3 py-2 text-right">Orders</th>
-              <th className="px-3 py-2 text-right">Avg miles</th>
-              <th className="px-3 py-2 text-right">Avg amount</th>
-              <th className="px-3 py-2 text-right">Avg $/mi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.perZip.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-3 py-4 text-center text-muted">
-                  No invoices ingested yet.
-                </td>
-              </tr>
-            ) : (
-              data.perZip.map((row) => (
-                <tr
-                  key={row.zip}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setDrillZip(row.zip)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setDrillZip(row.zip);
-                    }
-                  }}
-                  className="border-b border-[var(--border-light)] last:border-0 cursor-pointer hover:bg-[var(--surface-2)]"
-                >
-                  <td className="px-3 py-3 whitespace-nowrap font-mono">{row.zip}</td>
-                  <td className="px-3 py-3 whitespace-nowrap">{row.city}</td>
-                  <td className="px-3 py-3 text-right">{row.count}</td>
-                  <td className="px-3 py-3 text-right whitespace-nowrap">{miles(row.avgMiles)}</td>
-                  <td className="px-3 py-3 text-right whitespace-nowrap">{money(row.avgPrice)}</td>
-                  <td className="px-3 py-3 text-right whitespace-nowrap">
-                    {row.avgPricePerMile ? `$${row.avgPricePerMile.toFixed(2)}` : "—"}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+      <div className="flex items-center gap-2">
+        <label htmlFor="history-month" className="text-sm font-medium text-text">
+          Month
+        </label>
+        <select
+          id="history-month"
+          value={selected ?? payload.month ?? ""}
+          onChange={(e) => {
+            setSelected(e.target.value);
+            loadMonth(e.target.value);
+          }}
+          disabled={loading}
+          className="min-h-[44px] rounded-md border border-[var(--input-border)] bg-surface text-text text-sm px-3"
+        >
+          {payload.months.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+        {loading && <span className="text-xs text-muted">Loading…</span>}
       </div>
 
-      <FlagsPanels flags={data.flags} />
+      {error && <p className="text-sm text-[var(--warn-text)]">{error}</p>}
 
-      <ZipLinesModal zip={drillZip} onClose={() => setDrillZip(null)} />
+      {payload.result && (
+        <>
+          <MatchRateBanner
+            summary={payload.result.summary}
+            vendor={payload.result.invoice.vendor}
+            invoiceNumber={payload.result.invoice.invoiceNumber}
+          />
+          <SummaryCards summary={payload.result.summary} />
+          <LineTable lines={payload.result.lines} />
+          <FlagsPanels flags={payload.result.flags} />
+        </>
+      )}
     </div>
   );
 }
