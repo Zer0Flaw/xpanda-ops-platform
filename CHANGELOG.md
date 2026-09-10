@@ -1836,6 +1836,45 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **Hotfix (unprompted, conversational request, no prompt file) — Invoice Analytics: "Resolve
+  unmatched" popup lets Steve manually complete a line the auto-resolver couldn't match (react-
+  component-agent §9b + next-platform-agent §9a; no DB migration).** Steve reported 3 orders
+  still not resolving after PXXX-n and asked for a way to type in the BOL # and address himself so
+  the report completes. New `POST /v2/api/logistics/invoice/resolve-line` (own route file, its own
+  small `resolveOrigin`/`resolveMiles` — duplicated from `../route.ts` rather than extracted/
+  shared, matching the precedent `month/route.ts` already set for its own independent summary
+  recompute, to keep this new write path from ever risking the live invoice-ingest route) takes a
+  hand-typed BOL # + single street address, geocodes it (same `geocode_cache`, so a prior failed
+  attempt at that exact address just retries live), computes mileage from the fixed facility
+  origin, and `UPDATE`s that one `freight_invoice_lines` row to `match_status = 'matched'`,
+  `excluded_from_stats = 0` — bypassing the `bols`/`jobs` lookup in `../route.ts` entirely, since
+  this is a human attesting to the destination, not a match against stored data. Guards a 0-row
+  UPDATE (line renumbered/deleted by a Replace re-upload between page load and the resolve click)
+  by checking `meta.changes === 1` and returning 404 rather than a false-success 200; logs via the
+  shared `logActivity()` helper (`entity_type: "freight_invoice_line"`) per AGENTS.md §2's
+  mutation-logging rule — this overwrites financial data with hand-typed values, worth an audit
+  trail. New `ResolveUnmatchedModal.tsx` lists every line where `excludedFromStats` is true
+  (covers both `unmatched` — no BOL/order on file — and a `multi_destination`/`matched` line whose
+  mileage never resolved) with inline BOL#/street/city/state/zip inputs, resolving one line at a
+  time; a warning banner + "Resolve" button appears above the results table on **both** the
+  Upload tab (immediate post-parse results) and the History tab (already-ingested invoices) —
+  History needed `invoiceNumber` added to `month/route.ts`'s per-line response (a month can span
+  multiple invoices, so the page-level `invoice.invoiceNumber` isn't reliable per-line) and its
+  `onResolved` refetches the whole month via the existing `loadMonth()` instead of patching state
+  directly, since a month's `result` can aggregate several invoices and resolve-line only ever
+  returns one invoice's recomputed result. **Deliberate scope cut, not a bug**: manual resolution
+  is single-destination only — collapses a multi-destination line to one BOL # + one address,
+  discarding the originally-extracted `bol_numbers` tokens (logged to `BACKLOG.md`). **Open
+  question for Steve, not resolved by this popup**: which failure mode the 3 reported orders are
+  actually in was never established — the popup handles both `unmatched` (no BOL/order match) and
+  `multi_destination` (routing still failing) cases, but if it's the latter, that's a sign
+  PXXX-n's Directions→matrix-legs fix didn't actually take (see PXXX-n's own known-limitation note
+  on uncached per-leg matrix calls / ORS quota) and is worth checking directly rather than treating
+  the manual workaround as proof the routing bug is fixed. `npx tsc --noEmit` + `npm run cf-build`
+  both green. **Committed, not pushed** — this is a new write path against production financial
+  data from a conversational request (no prompt file, no explicit push instruction), unlike this
+  session's earlier prompt-driven PXXX-n/-o work.
+
 - **PXXX-n — Invoice Analytics: fix multi-stop routing — Directions endpoint returns nothing,
   sum matrix legs instead (next-platform-agent §9a, single-function fix, no DB migration).**
   Root cause verified against prod: multi-destination lines geocode every stop correctly (0

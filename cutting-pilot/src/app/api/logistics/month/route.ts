@@ -77,6 +77,7 @@ export async function GET(request: Request) {
     const rows = lineRows.results ?? [];
 
     const lines = rows.map((r) => ({
+      invoiceNumber: r.invoice_number,
       lineNo: r.line_no,
       shipDate: r.ship_date,
       loadNumber: r.load_number,

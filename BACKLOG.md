@@ -219,6 +219,12 @@
 - [x] PXXX (Steve to assign) — Invoice Analytics, unit C + unit D: schema, BOL-token resolver, ORS mileage/price-per-mile, cross-history flags API, and the upload/parse/results page (`/v2/logistics/invoice-analytics`). Migrations authored not run, held on `ORS_API_KEY` secret + Steve running both migrations. See `CHANGELOG.md` for full detail.
 - [ ] **Invoice Analytics — unit F: legacy bridge card.** Surface a link/summary card into the legacy LISMA-spreadsheet-adjacent pages so staff still on the old workflow can find the new tool.
 - [ ] **Invoice Analytics history date-range filter** (needs `/v2/api/logistics/flags` to accept `?from/&to`) — deferred.
+- [ ] **Invoice Analytics — manual "Resolve unmatched" is single-destination only.** The Resolve
+  popup (Upload + History) collapses a multi-destination line to one BOL # + one address, which
+  discards the originally extracted BOL tokens (`bol_numbers` becomes a single-entry array). Fine
+  for a genuinely single-stop line that failed to auto-match; a manually "resolved" multi-stop
+  line loses its other stops. Revisit if this turns out to matter for a real multi-destination
+  unmatched line.
 - [ ] **History: multi-invoice month header polish.** `/v2/api/logistics/month`'s fallback invoice
   header for a month with >1 distinct invoice (`vendor: "Multiple"`, `invoiceNumber: "<n> invoices"`,
   `invoiceDate: <month>`) is untested against a real multi-invoice month — today there's exactly 1

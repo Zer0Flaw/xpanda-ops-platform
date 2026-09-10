@@ -13,6 +13,7 @@ import { parseInvoicePdf, type ParsedInvoice } from "@/lib/logistics/parseInvoic
 import ZipLinesModal from "@/components/logistics/ZipLinesModal";
 import FinancialsPanel from "@/components/logistics/FinancialsPanel";
 import InvoiceResultToolbar from "@/components/logistics/InvoiceResultToolbar";
+import ResolveUnmatchedModal, { type UnresolvedLine } from "@/components/logistics/ResolveUnmatchedModal";
 
 interface Props {
   userName: string;
@@ -23,6 +24,7 @@ interface Props {
 type MatchStatus = "matched" | "unmatched" | "multi_destination";
 
 interface ResultLine {
+  invoiceNumber?: string; // only present on History (month) lines, which can span invoices
   lineNo: number;
   shipDate: string | null;
   loadNumber: string | null;
@@ -116,6 +118,7 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
   const [result, setResult] = useState<InvoiceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [duplicateInfo, setDuplicateInfo] = useState<DuplicateInfo | null>(null);
+  const [resolveOpen, setResolveOpen] = useState(false);
 
   async function handleFile(file: File | undefined | null) {
     if (!file) return;
@@ -186,6 +189,7 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
   }
 
   const isBusy = stage === "parsing" || stage === "submitting";
+  const unresolvedLines = result ? result.lines.filter((l) => l.excludedFromStats) : [];
 
   return (
     <div className="min-h-screen flex flex-col bg-bg">
@@ -283,12 +287,44 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
             {result && (
               <>
                 <InvoiceResultToolbar result={result} label={result.invoice.invoiceNumber} />
+                {unresolvedLines.length > 0 && (
+                  <div className="no-print flex items-center justify-between gap-2 rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn-text)] text-sm px-4 py-3">
+                    <span>
+                      {unresolvedLines.length} line{unresolvedLines.length === 1 ? "" : "s"} need a BOL # and
+                      address to be included in the report.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setResolveOpen(true)}
+                      className="min-h-[44px] px-4 rounded-md border border-[var(--warn-border)] bg-surface text-text text-sm font-medium hover:bg-[var(--surface-2)] shrink-0 cursor-pointer"
+                    >
+                      Resolve
+                    </button>
+                  </div>
+                )}
                 <div className="invoice-print-region space-y-6">
                   <MatchRateBanner summary={result.summary} vendor={result.invoice.vendor} invoiceNumber={result.invoice.invoiceNumber} />
                   <SummaryCards summary={result.summary} />
                   <LineTable lines={result.lines} />
                   <FlagsPanels flags={result.flags} />
                 </div>
+                <ResolveUnmatchedModal
+                  isOpen={resolveOpen}
+                  onClose={() => setResolveOpen(false)}
+                  lines={unresolvedLines.map(
+                    (l): UnresolvedLine => ({
+                      invoiceNumber: result.invoice.invoiceNumber,
+                      lineNo: l.lineNo,
+                      shipDate: l.shipDate,
+                      loadNumber: l.loadNumber,
+                      poText: l.poText,
+                      amount: l.amount,
+                      bolNumbers: l.bolNumbers,
+                      note: l.note,
+                    })
+                  )}
+                  onResolved={(body) => setResult(body)}
+                />
               </>
             )}
 
@@ -502,6 +538,7 @@ function HistoryPanel() {
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<MonthResponse | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [resolveOpen, setResolveOpen] = useState(false);
   const requestIdRef = useRef(0);
 
   function loadMonth(month?: string) {
@@ -541,6 +578,8 @@ function HistoryPanel() {
     return <p className="text-sm text-muted">No invoices ingested yet.</p>;
   }
 
+  const unresolvedLines = payload.result ? payload.result.lines.filter((l) => l.excludedFromStats) : [];
+
   return (
     <div className="space-y-6">
       <div className="no-print flex items-center gap-2">
@@ -576,6 +615,21 @@ function HistoryPanel() {
             showAnnual
             year={(payload.month ?? "").slice(0, 4)}
           />
+          {unresolvedLines.length > 0 && (
+            <div className="no-print flex items-center justify-between gap-2 rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn-text)] text-sm px-4 py-3">
+              <span>
+                {unresolvedLines.length} line{unresolvedLines.length === 1 ? "" : "s"} need a BOL # and
+                address to be included in the report.
+              </span>
+              <button
+                type="button"
+                onClick={() => setResolveOpen(true)}
+                className="min-h-[44px] px-4 rounded-md border border-[var(--warn-border)] bg-surface text-text text-sm font-medium hover:bg-[var(--surface-2)] shrink-0 cursor-pointer"
+              >
+                Resolve
+              </button>
+            </div>
+          )}
           <div className="invoice-print-region space-y-6">
             <MatchRateBanner
               summary={payload.result.summary}
@@ -586,6 +640,23 @@ function HistoryPanel() {
             <LineTable lines={payload.result.lines} />
             <FlagsPanels flags={payload.result.flags} />
           </div>
+          <ResolveUnmatchedModal
+            isOpen={resolveOpen}
+            onClose={() => setResolveOpen(false)}
+            lines={unresolvedLines.map(
+              (l): UnresolvedLine => ({
+                invoiceNumber: l.invoiceNumber ?? payload.result!.invoice.invoiceNumber,
+                lineNo: l.lineNo,
+                shipDate: l.shipDate,
+                loadNumber: l.loadNumber,
+                poText: l.poText,
+                amount: l.amount,
+                bolNumbers: l.bolNumbers,
+                note: l.note,
+              })
+            )}
+            onResolved={() => loadMonth(selected ?? payload.month ?? undefined)}
+          />
         </>
       )}
     </div>
