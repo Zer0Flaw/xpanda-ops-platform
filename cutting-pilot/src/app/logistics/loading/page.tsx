@@ -7,6 +7,7 @@
 // gate (xpanda-ops-agents.md §1): built-and-deployed-but-unlinked until Steve has floor-tested it
 // and confirmed it's complete (see also §Termination: legacy logistics/loading.html stays live
 // and untouched until then).
+import { Suspense } from "react";
 import { headers } from "next/headers";
 import { validateSession } from "@/lib/session";
 import { getEnv } from "@/lib/db";
@@ -28,5 +29,11 @@ export default async function LoadingDashboardPage() {
   const isAdmin = session?.isAdministrator ?? false;
   const permissions = session?.permissions ?? {};
 
-  return <DockBoard userName={userName} isAdmin={isAdmin} permissions={permissions} />;
+  return (
+    // PXXX-b: DockBoard reads ?assignment=/?shipment= via useSearchParams() for notification
+    // deep-linking -- Next.js requires a Suspense boundary around any client component using it.
+    <Suspense fallback={null}>
+      <DockBoard userName={userName} isAdmin={isAdmin} permissions={permissions} />
+    </Suspense>
+  );
 }

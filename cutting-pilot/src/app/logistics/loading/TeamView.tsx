@@ -8,40 +8,35 @@
 // component.
 import BayListItem from "@/components/loading/BayListItem";
 import DockAssignmentCard from "@/components/loading/DockAssignmentCard";
+import { sortAssignments, type LdSortOrder } from "@/components/loading/sortAssignments";
 import type { CardActionHandlers, DockAssignment, DockBay } from "@/components/loading/dockTypes";
 
 const BAY_ACTIVE_STATUSES = ["not_started", "loading", "loaded"];
 
-// TODO(PXXX-b): delete once src/components/loading/sortAssignments.ts lands and every list on
-// the board (Overview + Team View) routes through the real shared helper. Duplicated here only
-// so PXXX-a's bay groups/Yard list aren't left unsorted in the meantime -- same inv_asc algorithm
-// PXXX-b's helper will formalize, ported from loading.html's sortAssignments.
-function sortInvAsc(arr: DockAssignment[]): DockAssignment[] {
-  const out = [...arr];
-  out.sort((a, b) => {
-    const ai = a.invoice_number || "";
-    const bi = b.invoice_number || "";
-    if (!ai && !bi) return 0;
-    if (!ai) return 1;
-    if (!bi) return -1;
-    return ai.localeCompare(bi, undefined, { numeric: true, sensitivity: "base" });
-  });
-  return out;
-}
-
 interface TeamViewProps {
   bays: DockBay[];
   assignments: DockAssignment[];
+  sortOrder: LdSortOrder;
   selectedBayId: string | null;
   onSelectBay: (bayId: string | null) => void;
   cardHandlers: CardActionHandlers;
+  highlightedId?: string | null;
 }
 
-export default function TeamView({ bays, assignments, selectedBayId, onSelectBay, cardHandlers }: TeamViewProps) {
-  const yard = sortInvAsc(
+export default function TeamView({
+  bays,
+  assignments,
+  sortOrder,
+  selectedBayId,
+  onSelectBay,
+  cardHandlers,
+  highlightedId = null,
+}: TeamViewProps) {
+  const yard = sortAssignments(
     assignments.filter(
       (a) => a.location === "yard" && a.loading_status !== "in_transit" && a.loading_status !== "delivered"
-    )
+    ),
+    sortOrder
   );
 
   if (selectedBayId === null) {
@@ -63,7 +58,13 @@ export default function TeamView({ bays, assignments, selectedBayId, onSelectBay
           ) : (
             <div className="space-y-2">
               {yard.map((a) => (
-                <DockAssignmentCard key={a.id} a={a} {...cardHandlers} draggable={false} />
+                <DockAssignmentCard
+                  key={a.id}
+                  a={a}
+                  {...cardHandlers}
+                  draggable={false}
+                  highlighted={highlightedId === a.id}
+                />
               ))}
             </div>
           )}
@@ -110,7 +111,7 @@ export default function TeamView({ bays, assignments, selectedBayId, onSelectBay
         )}
       </div>
       {groups.map((g) => {
-        const members = sortInvAsc(bayAssignments.filter((a) => a.loading_status === g.status));
+        const members = sortAssignments(bayAssignments.filter((a) => a.loading_status === g.status), sortOrder);
         return (
           <section key={g.status} className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted px-1">
@@ -121,7 +122,13 @@ export default function TeamView({ bays, assignments, selectedBayId, onSelectBay
             ) : (
               <div className="space-y-2">
                 {members.map((a) => (
-                  <DockAssignmentCard key={a.id} a={a} {...cardHandlers} draggable={false} />
+                  <DockAssignmentCard
+                    key={a.id}
+                    a={a}
+                    {...cardHandlers}
+                    draggable={false}
+                    highlighted={highlightedId === a.id}
+                  />
                 ))}
               </div>
             )}

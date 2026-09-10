@@ -1836,6 +1836,54 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-b — v2 Loading Dashboard: Overview parity gaps — search, sort, collapse, Shipping Info,
+  touch drag (react-component-agent §9b, no DB migration, no middleware change — see the
+  known-dependency note below).** Ports legacy's `ldMatchesSearch`/`ldOverviewSet`/`sortAssignments`/
+  `toggleSection`/`openShippingInfo`/`initTouchDragForOverview` into `DockBoard.tsx`.
+  **Search**: toolbar text input (`INV#, customer, or PO`, `min-width:180px`,
+  `autoComplete="off"`), case-insensitive substring match across
+  invoice_number/customer/po_number; a non-empty search bypasses the This Week filter, matching
+  legacy's `ldOverviewSet` exactly. **Sort**: new `src/components/loading/sortAssignments.ts`
+  (`inv_asc`/`inv_desc` with blanks sorted last in both directions, `date_asc` falling back to
+  `created_at`) replaces PXXX-a's local `TeamView.tsx` duplicate; every list on the board —
+  Awaiting, each bay column, Yard, In Transit, Delivered, and both Team View screens — now routes
+  through it, default `inv_asc`. **Collapse**: Awaiting/Yard/In Transit/Delivered headings are
+  clickable with a `▾`/`▸` chevron, persisted to `localStorage` under
+  `ld_section_collapsed_v1` — grep-confirmed byte-identical to legacy's `LD_COLLAPSE_KEY` so an
+  operator's collapse state survives the legacy→v2 cutover; read in a mount-only `useEffect`
+  wrapped in try/catch, matching legacy's `loadCollapseState`. **Shipping Info**: new
+  `ShippingInfoModal.tsx` (composes `Modal`) opened by turning the card's INV# text into a
+  button; fetches `GET /v2/api/jobs/{job_id}`, cached in a `Map` held in `DockBoard` state (owned
+  there, not the modal, so reopening the same job is instant) — matches
+  `populateShippingInfo`'s field list/timestamp formatting. **Deep link**: `?assignment=` is
+  read via `useSearchParams()` (required wrapping `<DockBoard>` in a `<Suspense>` boundary in
+  `page.tsx`) and, once the first load resolves, scrolls the matching card into view with a
+  timed highlight ring — drills into the assignment's bay first if Team View is active. A
+  deliberate deviation from legacy (which auto-opens the Shipping Info modal instead) — noted,
+  not silently changed. **`?shipment=` was NOT ported** — legacy resolves it via
+  `GET /api/shipments?id=<id>` (single-record lookup); v2's `/v2/api/shipments` route only
+  supports `?job_id=` (a list filter, verified by reading the route before coding against it,
+  not assumed), and adding an `id=` mode would be an API change this prompt's own scope
+  excludes. Logged to `BACKLOG.md`. **Touch drag**: ported by hand (HTML5 drag-and-drop has no
+  touch equivalent) — a floating card clone follows the finger, `elementFromPoint` finds the bay
+  column (`data-bay-drop-id`) or Awaiting queue (`data-queue-drop`) underneath, and touchend
+  reuses the same `moveAssignmentToTarget` helper the mouse path was refactored to share (was
+  inlined in `handleDrop`). Team View stays drag-free, matching legacy. **Known dependency, not
+  fixed in this commit**: `ShippingInfoModal`'s `GET /v2/api/jobs/{job_id}` shares its bare
+  `/v2/api/jobs` prefix with middleware's existing `["jobs"]`-only rule, so a user holding
+  `logistics.loading` but not `jobs` would 403 fetching shipping info — this prompt's own scope
+  excludes middleware changes, so the widening is deferred to PXXX-c (which explicitly
+  authorizes touching `/v2/api/jobs`'s permission rule, for its own new search route sharing the
+  same prefix). Currently latent either way — the page is still dark-launched behind
+  `logistics.v2` (no role holds it), so only admins (who bypass all permission checks) can reach
+  it today. `npx tsc --noEmit` + `npm run cf-build` both green (confirmed no
+  `useSearchParams`-without-Suspense build warning in the log). No BACKLOG item removed for
+  search/sort/collapse/Shipping Info/touch-drag individually — those were documented only as
+  scope cuts in unit 3b's original CHANGELOG entry and `DockBoard.tsx`'s header comment, never
+  tracked as their own bullets — but the two related "Unit 3b follow-up" bullets this closes
+  (drag-and-drop, Shipping Info modal) were removed, and a new item was added for the
+  `?shipment=` gap.
+
 - **PXXX-a — v2 Loading Dashboard: "Loading Team View" rebuilt as a 1:1 clone of legacy
   (react-component-agent §9b, no API/DB/middleware change).** Unit 3b originally shipped Team
   View as a boolean flag hiding sections on the same 6-column Overview grid, documented as a

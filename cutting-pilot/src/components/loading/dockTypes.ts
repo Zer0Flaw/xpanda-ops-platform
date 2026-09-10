@@ -60,6 +60,7 @@ export interface CardActionHandlers {
   onArchive: (a: DockAssignment) => void;
   onTrailerChange: (a: DockAssignment, value: string) => void;
   onViewBol: (a: DockAssignment) => void;
+  onShowShippingInfo: (a: DockAssignment) => void;
 }
 
 export const LOADING_FLOW = ["awaiting", "not_started", "loading", "loaded", "in_transit", "delivered"];

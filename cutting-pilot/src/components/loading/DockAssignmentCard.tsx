@@ -15,8 +15,10 @@ interface DockAssignmentCardProps extends CardActionHandlers {
   showArchive?: boolean;
   isDragging?: boolean;
   draggable?: boolean;
+  highlighted?: boolean;
   onCardDragStart?: (e: React.DragEvent) => void;
   onCardDragEnd?: () => void;
+  onCardTouchStart?: (e: React.TouchEvent) => void;
 }
 
 function formatShipDay(iso: string): string {
@@ -37,11 +39,14 @@ export default function DockAssignmentCard({
   onArchive,
   onTrailerChange,
   onViewBol,
+  onShowShippingInfo,
   showArchive = false,
   isDragging = false,
   draggable: isDraggable = false,
+  highlighted = false,
   onCardDragStart,
   onCardDragEnd,
+  onCardTouchStart,
 }: DockAssignmentCardProps) {
   const variant = statusVariant(a.loading_status);
   const next = nextLoadingStatus(a.loading_status);
@@ -60,9 +65,11 @@ export default function DockAssignmentCard({
 
   return (
     <div
+      data-assignment-id={a.id}
       draggable={isDraggable}
       onDragStart={onCardDragStart}
       onDragEnd={onCardDragEnd}
+      onTouchStart={onCardTouchStart}
       className="rounded-md border px-2.5 py-2 space-y-1.5 text-left w-full transition-shadow"
       style={{
         background: `linear-gradient(0deg, ${variant.border}1a, ${variant.border}1a), var(--surface)`,
@@ -71,13 +78,28 @@ export default function DockAssignmentCard({
         opacity: isDragging ? 0.5 : 1,
         transform: isDragging ? 'scale(0.95)' : 'none',
         cursor: isDraggable ? 'grab' : undefined,
+        boxShadow: highlighted ? '0 0 0 3px var(--accent)' : undefined,
       }}
     >
       <div className="flex items-center justify-between gap-1">
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-          <span className="font-mono tabular-nums font-bold text-xs truncate" style={{ color: variant.text }}>
-            {a.invoice_number ? `INV# ${a.invoice_number}` : "No INV#"}
-          </span>
+          {a.invoice_number ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowShippingInfo(a);
+              }}
+              className="font-mono tabular-nums font-bold text-xs truncate underline decoration-dotted cursor-pointer"
+              style={{ color: variant.text }}
+            >
+              INV# {a.invoice_number}
+            </button>
+          ) : (
+            <span className="font-mono tabular-nums font-bold text-xs truncate" style={{ color: variant.text }}>
+              No INV#
+            </span>
+          )}
           {showLoadCount && (
             <span className="font-mono tabular-nums text-xs font-bold text-[#6366f1]">
               {a.load_number ?? 1} of {a.load_count}
