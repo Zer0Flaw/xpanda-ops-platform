@@ -25,6 +25,7 @@ interface InBody {
   invoiceNumber: string;
   invoiceDate?: string;
   lines: InLine[];
+  confirm?: boolean;
 }
 
 interface BolRow {
@@ -310,6 +311,32 @@ export async function POST(req: Request) {
     }
 
     const { DB } = await getEnv();
+
+    if (body.confirm !== true) {
+      const dup = await DB.prepare(
+        `SELECT COUNT(*) AS n, SUM(amount) AS total, MAX(created_at) AS last_at,
+                MIN(invoice_date) AS invoice_date, MIN(vendor) AS vendor
+         FROM freight_invoice_lines WHERE invoice_number = ?`
+      )
+        .bind(body.invoiceNumber)
+        .first<{ n: number; total: number | null; last_at: string | null; invoice_date: string | null; vendor: string | null }>();
+
+      if (dup && dup.n > 0) {
+        return NextResponse.json({
+          ok: true,
+          duplicate: {
+            invoiceNumber: body.invoiceNumber,
+            vendor: dup.vendor,
+            invoiceDate: dup.invoice_date,
+            existingLineCount: dup.n,
+            existingTotalAmount: dup.total,
+            existingIngestedAt: dup.last_at,
+            incomingLineCount: body.lines.length,
+          },
+        });
+      }
+    }
+
     const { env } = await getCloudflareContext();
     const apiKey = (env as any).ORS_API_KEY ?? "";
 
@@ -320,6 +347,11 @@ export async function POST(req: Request) {
     for (const line of body.lines) {
       resolved.push(await resolveLine(DB, origin, apiKey, line));
     }
+
+    if (body.confirm === true) {
+      await DB.prepare(`DELETE FROM freight_invoice_lines WHERE invoice_number = ?`).bind(body.invoiceNumber).run();
+    }
+
     for (const r of resolved) {
       await persistLine(DB, body, r);
     }

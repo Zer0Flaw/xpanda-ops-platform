@@ -1836,6 +1836,49 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-j — Invoice Analytics: duplicate-invoice failsafe (block + Replace confirm + clean-replace)
+  (next-platform-agent §9a + react-component-agent §9b, ingest-route edit + upload-flow confirm
+  modal, no DB migration — a scoped `DELETE` on the existing `freight_invoice_lines` table on
+  explicit user confirm only).** `persistLine`'s `ON CONFLICT(invoice_number, line_no)` upsert
+  already overwrote in place on a same-invoice re-upload, but silently — and a re-upload with
+  fewer lines than the original left stale orphan rows behind. Duplicate identity = exact
+  `invoice_number` (accepted residual edge, out of scope: a same-month invoice under a different
+  or blank number won't be flagged). **`POST /v2/api/logistics/invoice`**: added `confirm?: boolean`
+  to `InBody`; when absent/false, a duplicate pre-check (`COUNT(*)`/`SUM(amount)`/`MAX(created_at)`
+  keyed on `invoice_number`) runs **before** any geocoding/mileage work (saves ORS quota on a
+  blocked dup) and, if the invoice already has rows, returns immediately with
+  `{ok:true, duplicate:{...}}` — no write, no geocode calls. When `confirm===true`, the resolve/
+  geocode loop still runs first, then a single `DELETE FROM freight_invoice_lines WHERE
+  invoice_number=?` clears the stored copy, then the normal persist loop runs — ordering is
+  deliberate: a geocoding failure can never destroy the stored copy before a replacement exists.
+  **`InvoiceAnalytics.tsx`**: `submit()` now takes a `confirm` param threaded into the POST body;
+  a `duplicate` response stores a new `DuplicateInfo` state (keeping `parsed` so Replace can
+  re-submit) instead of setting `result`; a new `<Modal>` (reusing the shared primitive, not
+  hand-rolled) shows the stored-copy summary with Cancel (no write, returns to idle) / Replace
+  (`submit(parsed, true)`, shows the submitting state) actions. **`advisor()` pre-commit pass
+  verified one thing that would otherwise only surface from a second file**: grepped for every
+  caller of `/v2/api/logistics/invoice` (`grep -rn "api/logistics/invoice" src`) to confirm the
+  new `{duplicate:{...}}` response shape (no `summary`/`lines`) on the non-confirm path can't
+  silently break another consumer — confirmed exactly one caller (`InvoiceAnalytics.tsx`'s
+  `submit`), already handling the branch. Checked the Replace button's `bg-[var(--brand)]
+  text-white` against the repo's own primary-button convention (~15 other call sites, e.g.
+  `OrderEntryForm.tsx`/`BolGenerateModal.tsx`/`BlocksApp.tsx`) before accepting it as
+  tokens-not-hex-compliant — it's the established pairing, not a deviation. **Two known
+  limitations, not fixed, logged for awareness**: (1) the resolve→delete→persist sequence isn't
+  one transaction — if a `persistLine` INSERT fails partway through the loop (D1 error, Worker
+  wall-clock limit on an unusually long invoice), the old rows are already deleted and only
+  partial new rows exist; `DB.batch([...])` would make it atomic but requires restructuring
+  `persistLine` to return a statement instead of executing it, a larger change than this prompt
+  scoped — logged to `BACKLOG.md`; (2) after clicking Cancel, re-selecting the *same* PDF file
+  silently no-ops (`<input type="file">` doesn't fire `onChange` on an unchanged value) — dropping
+  a *different* file works fine; out of this prompt's stated Cancel scope ("return to idle, no
+  write"), just noting it. `npx tsc --noEmit` + `npm run cf-build` green. Single commit:
+  `invoice/route.ts` (edited) + `InvoiceAnalytics.tsx` (edited) + `CHANGELOG.md` + `BACKLOG.md`,
+  staged by explicit path. `BACKLOG.md`: added the prompt's own residual-edge note (verbatim) plus
+  the atomic-replace follow-on from (1) above. No migration. **Terminates at ready-to-push per
+  this prompt's own instruction — not pushed in isolation, pushed together with -i** per Steve's
+  mid-session authorization, same session.
+
 - **PXXX-i — Invoice Analytics: History tab becomes a month selector + full upload-fidelity
   results view (next-platform-agent §9a + react-component-agent §9b, net-new backend + `HistoryPanel`
   rewrite, no DB migration — reads `freight_invoice_lines`).** Scope change: History no longer shows

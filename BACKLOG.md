@@ -225,6 +225,14 @@
   invoice/month. Revisit `MatchRateBanner`'s rendering of that fallback once a month actually holds
   several invoices.
 - [ ] **Financials tab: vendor breakdown widget** — deferred until multi-vendor data exists (currently 1 vendor).
+- [ ] **Invoice dedup residual edge** — same-month invoice under a different/blank `invoice_number`
+  is not flagged (relies on stable parsed invoice numbers); revisit if parser numbering proves
+  unstable.
+- [ ] **Invoice dedup Replace isn't atomic.** `POST /v2/api/logistics/invoice`'s clean-replace
+  (resolve → `DELETE FROM freight_invoice_lines` → persist) is 3 separate D1 calls, not one
+  transaction — if a `persistLine` INSERT fails partway through the persist loop, the old rows are
+  already gone and only partial new rows exist. `DB.batch([...])` would make it atomic but needs
+  `persistLine` restructured to return a statement instead of executing it.
 - [ ] **Invoice Analytics — native driving-distance for multi-stop lines.** v1 excludes `multi_destination` lines (multiple BOL tokens resolving to different ZIPs on one invoice line) from stats entirely rather than computing a real multi-stop route distance.
 - [ ] **Invoice Analytics — no Seal Express sample invoice was available to validate unit D's PDF parser.** Only one real vendor sample (`26.03 Lisma Invoice Details 4611.pdf`) exists in the repo; the column-detection logic is written to the same vendor-agnostic rule the prompt specifies for both vendors, but Seal's actual layout was never exercised. Get a real Seal invoice and re-run the same end-to-end validation (parse → `extractBolTokens` → token count) before trusting it blind.
 - [ ] **v2 logistics rollout**: remove the two `logistics.v2` rules from `middleware.ts` (granular `logistics.*` rules resume); grant `logistics.v2` to the appropriate roles or retire the key + label. Wire nav links only at cutover (still unlinked until then).

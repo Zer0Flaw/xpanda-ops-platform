@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FileUp } from "lucide-react";
 import PlatformHeader from "@/components/PlatformHeader";
+import Modal from "@/components/Modal";
 import InfoTip from "@/components/InfoTip";
 import { parseInvoicePdf, type ParsedInvoice } from "@/lib/logistics/parseInvoicePdf";
 import ZipLinesModal from "@/components/logistics/ZipLinesModal";
@@ -78,6 +79,16 @@ interface InvoiceResult {
   flags: { zipVariance: ZipVarianceEntry[]; inversions: InversionEntry[] };
 }
 
+interface DuplicateInfo {
+  invoiceNumber: string;
+  vendor: string | null;
+  invoiceDate: string | null;
+  existingLineCount: number;
+  existingTotalAmount: number | null;
+  existingIngestedAt: string | null;
+  incomingLineCount: number;
+}
+
 type Stage = "idle" | "parsing" | "submitting" | "done" | "error";
 
 const money = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -103,6 +114,7 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
   const [parsed, setParsed] = useState<ParsedInvoice | null>(null);
   const [result, setResult] = useState<InvoiceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [duplicateInfo, setDuplicateInfo] = useState<DuplicateInfo | null>(null);
 
   async function handleFile(file: File | undefined | null) {
     if (!file) return;
@@ -125,14 +137,14 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
     }
   }
 
-  async function submit(doc: ParsedInvoice) {
+  async function submit(doc: ParsedInvoice, confirm = false) {
     setStage("submitting");
     try {
       const res = await fetch("/v2/api/logistics/invoice", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(doc),
+        body: JSON.stringify({ ...doc, confirm }),
       });
 
       if (res.status === 401) {
@@ -155,6 +167,12 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
       if (!body.ok) {
         setStage("error");
         setError(body.error || body.detail || "Something went wrong.");
+        return;
+      }
+
+      if (body.duplicate) {
+        setDuplicateInfo(body.duplicate);
+        setStage("idle");
         return;
       }
 
@@ -266,6 +284,39 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
                 <LineTable lines={result.lines} />
                 <FlagsPanels flags={result.flags} />
               </>
+            )}
+
+            {duplicateInfo && (
+              <Modal isOpen onClose={() => setDuplicateInfo(null)} title="Invoice already stored" size="md">
+                <p className="text-sm text-text">
+                  Invoice {duplicateInfo.invoiceNumber} ({duplicateInfo.vendor || "unknown vendor"}
+                  {duplicateInfo.invoiceDate ? `, ${duplicateInfo.invoiceDate.slice(0, 7)}` : ""}) is already
+                  stored — {duplicateInfo.existingLineCount} line{duplicateInfo.existingLineCount === 1 ? "" : "s"},{" "}
+                  {money(duplicateInfo.existingTotalAmount ?? 0)}, last ingested{" "}
+                  {duplicateInfo.existingIngestedAt ? new Date(duplicateInfo.existingIngestedAt).toLocaleString() : "an unknown time"}.
+                  Replacing deletes the stored copy and re-ingests this upload ({duplicateInfo.incomingLineCount} line
+                  {duplicateInfo.incomingLineCount === 1 ? "" : "s"}).
+                </p>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateInfo(null)}
+                    className="min-h-[44px] px-4 rounded-md border border-[var(--card-border)] text-sm font-medium text-text hover:bg-[var(--surface-2)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDuplicateInfo(null);
+                      if (parsed) submit(parsed, true);
+                    }}
+                    className="min-h-[44px] px-4 rounded-md bg-[var(--brand)] text-white text-sm font-medium hover:bg-[var(--brand-hover)]"
+                  >
+                    Replace
+                  </button>
+                </div>
+              </Modal>
             )}
           </>
         )}
