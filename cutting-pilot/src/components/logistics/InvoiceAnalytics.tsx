@@ -4,10 +4,11 @@
 // (parseInvoicePdf.ts) -> POST to /v2/api/logistics/invoice (-c, resolves BOL tokens ->
 // addresses -> mileage -> price/mile) -> render the match-rate banner, summary cards, line
 // table, and cross-history flags panels from that exact response.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileUp } from "lucide-react";
 import PlatformHeader from "@/components/PlatformHeader";
 import { parseInvoicePdf, type ParsedInvoice } from "@/lib/logistics/parseInvoicePdf";
+import ZipLinesModal from "@/components/logistics/ZipLinesModal";
 
 interface Props {
   userName: string;
@@ -51,6 +52,22 @@ interface InversionEntry {
   fartherAvgPrice: number;
 }
 
+interface PerZipEntry {
+  zip: string;
+  city: string;
+  count: number;
+  avgMiles: number;
+  avgPrice: number;
+  avgPricePerMile: number;
+}
+
+interface FlagsResponse {
+  ok: boolean;
+  flags: { zipVariance: ZipVarianceEntry[]; inversions: InversionEntry[] };
+  perZip: PerZipEntry[];
+  error?: string;
+}
+
 interface InvoiceResult {
   invoice: { vendor: string; invoiceNumber: string; invoiceDate: string | null };
   summary: {
@@ -84,6 +101,7 @@ const STATUS_LABEL: Record<MatchStatus, string> = {
 };
 
 export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Props) {
+  const [tab, setTab] = useState<"upload" | "history">("upload");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [dragActive, setDragActive] = useState(false);
@@ -169,71 +187,96 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
       <div className="flex-1 w-full max-w-[1100px] mx-auto px-4 py-6 space-y-6">
         <h1 className="text-xl font-semibold text-text">Invoice Analytics</h1>
 
-        <section>
-          <label
-            htmlFor="invoice-pdf-input"
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragActive(true);
-            }}
-            onDragEnter={(e) => {
-              e.preventDefault();
-              setDragActive(true);
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              setDragActive(false);
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragActive(false);
-              handleFile(e.dataTransfer.files?.[0]);
-            }}
-            className={`flex flex-col items-center justify-center gap-2 min-h-[96px] rounded-lg border-2 border-dashed ${
-              dragActive ? "border-[var(--brand)]" : "border-[var(--input-border)]"
-            } bg-[var(--surface-2)] text-center px-4 py-6 cursor-pointer hover:border-[var(--brand)] transition-colors`}
-          >
-            <FileUp size={22} className="text-muted" aria-hidden="true" />
-            <span className="text-sm font-medium text-text">
-              {stage === "parsing"
-                ? "Parsing invoice…"
-                : stage === "submitting"
-                  ? `Resolving mileage for ${parsed?.lines.length ?? 0} line${parsed?.lines.length === 1 ? "" : "s"} — first upload can take a while…`
-                  : filename
-                    ? `Loaded: ${filename} — drop another to replace`
-                    : "Drop a freight invoice PDF here, or click to browse"}
-            </span>
-            <input
-              ref={fileInputRef}
-              id="invoice-pdf-input"
-              type="file"
-              accept="application/pdf,.pdf"
-              className="sr-only"
-              disabled={isBusy}
-              onChange={(e) => handleFile(e.target.files?.[0])}
-            />
-          </label>
-          {isBusy && (
-            <div className="mt-2 h-1 w-full overflow-hidden rounded bg-[var(--surface-2)]">
-              <div className="h-full w-1/3 animate-pulse bg-[var(--brand)]" />
-            </div>
-          )}
-        </section>
+        <div role="tablist" className="flex gap-1 border-b border-[var(--card-border)]">
+          {(["upload", "history"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={`px-4 min-h-[44px] text-sm font-medium border-b-2 -mb-px transition-colors ${
+                tab === t
+                  ? "border-[var(--brand)] text-text"
+                  : "border-transparent text-muted hover:text-text"
+              }`}
+            >
+              {t === "upload" ? "Upload" : "History"}
+            </button>
+          ))}
+        </div>
 
-        {error && (
-          <div className="rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn-text)] text-sm px-4 py-3">
-            {error}
-          </div>
-        )}
-
-        {result && (
+        {tab === "upload" && (
           <>
-            <MatchRateBanner summary={result.summary} vendor={result.invoice.vendor} invoiceNumber={result.invoice.invoiceNumber} />
-            <SummaryCards summary={result.summary} />
-            <LineTable lines={result.lines} />
-            <FlagsPanels flags={result.flags} />
+            <section>
+              <label
+                htmlFor="invoice-pdf-input"
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setDragActive(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragActive(false);
+                  handleFile(e.dataTransfer.files?.[0]);
+                }}
+                className={`flex flex-col items-center justify-center gap-2 min-h-[96px] rounded-lg border-2 border-dashed ${
+                  dragActive ? "border-[var(--brand)]" : "border-[var(--input-border)]"
+                } bg-[var(--surface-2)] text-center px-4 py-6 cursor-pointer hover:border-[var(--brand)] transition-colors`}
+              >
+                <FileUp size={22} className="text-muted" aria-hidden="true" />
+                <span className="text-sm font-medium text-text">
+                  {stage === "parsing"
+                    ? "Parsing invoice…"
+                    : stage === "submitting"
+                      ? `Resolving mileage for ${parsed?.lines.length ?? 0} line${parsed?.lines.length === 1 ? "" : "s"} — first upload can take a while…`
+                      : filename
+                        ? `Loaded: ${filename} — drop another to replace`
+                        : "Drop a freight invoice PDF here, or click to browse"}
+                </span>
+                <input
+                  ref={fileInputRef}
+                  id="invoice-pdf-input"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="sr-only"
+                  disabled={isBusy}
+                  onChange={(e) => handleFile(e.target.files?.[0])}
+                />
+              </label>
+              {isBusy && (
+                <div className="mt-2 h-1 w-full overflow-hidden rounded bg-[var(--surface-2)]">
+                  <div className="h-full w-1/3 animate-pulse bg-[var(--brand)]" />
+                </div>
+              )}
+            </section>
+
+            {error && (
+              <div className="rounded-md border border-[var(--warn-border)] bg-[var(--warn-bg)] text-[var(--warn-text)] text-sm px-4 py-3">
+                {error}
+              </div>
+            )}
+
+            {result && (
+              <>
+                <MatchRateBanner summary={result.summary} vendor={result.invoice.vendor} invoiceNumber={result.invoice.invoiceNumber} />
+                <SummaryCards summary={result.summary} />
+                <LineTable lines={result.lines} />
+                <FlagsPanels flags={result.flags} />
+              </>
+            )}
           </>
         )}
+
+        {tab === "history" && <HistoryPanel />}
       </div>
     </div>
   );
@@ -333,6 +376,8 @@ function LineTable({ lines }: { lines: ResultLine[] }) {
 }
 
 function FlagsPanels({ flags }: { flags: InvoiceResult["flags"] }) {
+  const [drillZip, setDrillZip] = useState<string | null>(null);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <div className="rounded-lg border border-[var(--card-border)] bg-surface p-4">
@@ -342,7 +387,19 @@ function FlagsPanels({ flags }: { flags: InvoiceResult["flags"] }) {
         ) : (
           <ul className="space-y-2 text-sm">
             {flags.zipVariance.map((z) => (
-              <li key={z.zip} className="flex flex-wrap items-baseline justify-between gap-x-3 border-b border-[var(--border-light)] last:border-0 pb-2 last:pb-0">
+              <li
+                key={z.zip}
+                role="button"
+                tabIndex={0}
+                onClick={() => setDrillZip(z.zip)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setDrillZip(z.zip);
+                  }
+                }}
+                className="flex flex-wrap items-baseline justify-between gap-x-3 border-b border-[var(--border-light)] last:border-0 pb-2 last:pb-0 min-h-[44px] cursor-pointer rounded hover:bg-[var(--surface-2)] px-1 -mx-1"
+              >
                 <span className="font-medium text-text">
                   {z.zip} · {z.city} <span className="text-muted">({z.count})</span>
                 </span>
@@ -375,6 +432,101 @@ function FlagsPanels({ flags }: { flags: InvoiceResult["flags"] }) {
           </ul>
         )}
       </div>
+
+      <ZipLinesModal zip={drillZip} onClose={() => setDrillZip(null)} />
+    </div>
+  );
+}
+
+function HistoryPanel() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<FlagsResponse | null>(null);
+  const [drillZip, setDrillZip] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch("/v2/api/logistics/flags")
+      .then(async (res) => {
+        const body: FlagsResponse = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !body.ok) {
+          setError(body?.error || "Could not load invoice history.");
+          return;
+        }
+        setData(body);
+      })
+      .catch((e: any) => {
+        if (!cancelled) setError(e?.message || "Could not reach the server.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (loading) return <p className="text-sm text-muted">Loading history…</p>;
+  if (error) return <p className="text-sm text-[var(--warn-text)]">{error}</p>;
+  if (!data) return null;
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-[var(--card-border)] bg-surface overflow-x-auto">
+        <table className="w-full text-sm min-w-[700px]">
+          <thead>
+            <tr className="text-left text-xs text-muted border-b border-[var(--card-border)]">
+              <th className="px-3 py-2">ZIP</th>
+              <th className="px-3 py-2">City</th>
+              <th className="px-3 py-2 text-right">Orders</th>
+              <th className="px-3 py-2 text-right">Avg miles</th>
+              <th className="px-3 py-2 text-right">Avg amount</th>
+              <th className="px-3 py-2 text-right">Avg $/mi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.perZip.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-4 text-center text-muted">
+                  No invoices ingested yet.
+                </td>
+              </tr>
+            ) : (
+              data.perZip.map((row) => (
+                <tr
+                  key={row.zip}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDrillZip(row.zip)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDrillZip(row.zip);
+                    }
+                  }}
+                  className="border-b border-[var(--border-light)] last:border-0 cursor-pointer hover:bg-[var(--surface-2)]"
+                >
+                  <td className="px-3 py-3 whitespace-nowrap font-mono">{row.zip}</td>
+                  <td className="px-3 py-3 whitespace-nowrap">{row.city}</td>
+                  <td className="px-3 py-3 text-right">{row.count}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap">{miles(row.avgMiles)}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap">{money(row.avgPrice)}</td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap">
+                    {row.avgPricePerMile ? `$${row.avgPricePerMile.toFixed(2)}` : "—"}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <FlagsPanels flags={data.flags} />
+
+      <ZipLinesModal zip={drillZip} onClose={() => setDrillZip(null)} />
     </div>
   );
 }

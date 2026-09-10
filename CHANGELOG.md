@@ -1836,6 +1836,39 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-f — Invoice Analytics: historical view (Upload | History tabs) (react-component-agent
+  §9b, pure-UI edit, no backend/DB change).** Ran after PXXX-e (below), reusing its `ZipLinesModal`
+  drill-down. Added a two-tab shell (`Upload` | `History`) to `InvoiceAnalytics.tsx` — the existing
+  upload/parse/results flow is now the Upload tab, unchanged. New `HistoryPanel` sub-component
+  (defined in-file, no new file) fetches `GET /v2/api/logistics/flags` (already returns `perZip`
+  over the full stored dataset — no endpoint change needed) and renders a per-ZIP table (ZIP,
+  city, order count, avg miles, avg amount, avg $/mi) plus the same-ZIP variance/inversions
+  `FlagsPanels` underneath, giving the History tab the drill-down modal for free. Per-ZIP rows open
+  their own `ZipLinesModal` instance on click (independent of `FlagsPanels`' own instance). v1 scope
+  locked per the prompt: no chart (no charting lib in the repo, single-invoice-date data would be
+  empty), no date-range filter (flags endpoint would need `?from/&to` — logged below). `npx tsc
+  --noEmit` + `npm run cf-build` green. Single commit: `InvoiceAnalytics.tsx` (edited) +
+  `CHANGELOG.md` + `BACKLOG.md`, staged by explicit path. **Not pushed** in isolation — pushed
+  together with PXXX-e per Steve's same-session "commit and push" instruction.
+
+- **PXXX-e — Invoice Analytics: same-ZIP drill-down modal + `GET /v2/api/logistics/lines`
+  (next-platform-agent §9a + react-component-agent §9b, net-new backend + net-new UI, no DB
+  migration — reads the existing `freight_invoice_lines` table).** New route
+  `src/app/api/logistics/lines/route.ts` — `GET /v2/api/logistics/lines?zip=<zip>` returns every
+  stored line for a ZIP (all invoices, all match statuses — matched, multi-destination, and
+  unmatched alike, so Steve sees the full picture of why prices differ), one parameterized SQL
+  statement, auto-gated `logistics.v2` via the existing `{ prefix: "/v2/api/logistics" }` middleware
+  rule (confirmed present, no middleware edit). New shared `src/components/logistics/
+  ZipLinesModal.tsx` (composes `Modal`, size `xl`) lists Invoice/Date/Load #/BOL(s)/PO text/City/
+  Miles/Amount/$-per-mile for a ZIP; `bol_numbers` parsed as its stored JSON-array string with a
+  fallback to the scalar `bol_number` column. `InvoiceAnalytics.tsx`'s `FlagsPanels` same-ZIP
+  variance rows are now keyboard-accessible clickable elements (`role="button"`, Enter/Space
+  handler) that open the modal; the inversions panel is untouched (v1 scope: same-ZIP variance
+  only). `npx tsc --noEmit` + `npm run cf-build` green. Single commit: the 2 new files +
+  `InvoiceAnalytics.tsx` (edited) + `CHANGELOG.md` + `BACKLOG.md`, staged by explicit path. Pushed
+  same session with PXXX-f per Steve's "read and execute... then commit and push" instruction —
+  no migration/v2-cutover gate applies (read-only route on an already-live, dark-launched page).
+
 - **PXXX — Invoice Analytics, unit D: the page (`/v2/logistics/invoice-analytics`) — upload,
   client-side PDF parse, submit, results (react-component-agent §9b).** Runs after unit C
   (below); shares this section's CHANGELOG entry ordering only, not a combined commit — two
