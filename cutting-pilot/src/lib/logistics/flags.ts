@@ -45,8 +45,8 @@ interface ZipAgg {
   milesSum: number;
 }
 
-// Only rows with excluded_from_stats = 0 (i.e. match_status = 'matched') and a real zip/miles
-// should be passed in — the caller filters, this just aggregates + compares.
+// Callers now pass only match_status = 'matched' rows (single-destination);
+// multi-stop path rates must not enter variance/inversions/per-ZIP comparisons.
 function aggregateByZip(rows: FlagRow[]): ZipAgg[] {
   const byZip = new Map<string, ZipAgg>();
   for (const r of rows) {

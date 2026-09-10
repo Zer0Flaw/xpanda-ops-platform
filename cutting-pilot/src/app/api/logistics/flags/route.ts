@@ -11,7 +11,7 @@ export async function GET() {
     const { DB } = await getEnv();
     const rows = await DB.prepare(
       `SELECT ship_to_zip, ship_to_city, amount, miles FROM freight_invoice_lines
-       WHERE excluded_from_stats = 0 AND ship_to_zip IS NOT NULL AND miles IS NOT NULL`
+       WHERE match_status = 'matched' AND ship_to_zip IS NOT NULL AND miles IS NOT NULL`
     ).all<{ ship_to_zip: string; ship_to_city: string; amount: number; miles: number }>();
 
     const historyRows: FlagRow[] = (rows.results ?? []).map((r) => ({

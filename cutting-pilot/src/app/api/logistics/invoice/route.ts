@@ -9,7 +9,7 @@ import { getEnv } from "@/lib/db";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { extractBolTokens, normalizeAddressKey, composeAddress } from "@/lib/logistics/freightInvoice";
 import { FACILITY_ORIGIN_ADDRESS, ORIGIN_CACHE_KEY } from "@/lib/logistics/origin";
-import { geocode, drivingMiles, type GeoPoint } from "@/lib/logistics/ors";
+import { geocode, drivingMiles, routePathMiles, type GeoPoint } from "@/lib/logistics/ors";
 import { computeZipVariance, computeInversions, type FlagRow } from "@/lib/logistics/flags";
 
 interface InLine {
@@ -28,12 +28,19 @@ interface InBody {
   confirm?: boolean;
 }
 
-interface BolRow {
-  bol_number: string;
+interface DestRow {
+  key: string;
   ship_to_street: string;
   ship_to_city: string;
   ship_to_state: string;
   ship_to_zip: string;
+  created_at: string | null;
+  source: "bol" | "job";
+}
+
+interface ResolvedDestination {
+  row: DestRow;
+  fallbackBase: string | null;
 }
 
 interface ResolvedLine {
@@ -50,6 +57,70 @@ interface ResolvedLine {
   miles: number | null;
   pricePerMile: number | null;
   note: string | undefined;
+}
+
+function bolBase(token: string): string {
+  const dash = token.indexOf("-");
+  return dash > 0 ? token.slice(0, dash) : token;
+}
+
+function pickBest(rows: DestRow[]): DestRow | null {
+  const nonBlank = rows.filter((r) => (r.ship_to_zip ?? "").trim() !== "");
+  const pool = nonBlank.length ? nonBlank : rows;
+  if (!pool.length) return null;
+  return [...pool].sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))[0];
+}
+
+function distinctZips(rows: DestRow[]): string[] {
+  return Array.from(new Set(rows.map((r) => r.ship_to_zip).filter((zip) => (zip ?? "").trim() !== "")));
+}
+
+// Resolves one destination address's geocoded point, using geocode_cache. Returns null if
+// geocoding is unavailable rather than crashing the invoice ingest.
+async function resolveStopPoint(
+  DB: D1Database,
+  apiKey: string,
+  street: string,
+  city: string,
+  state: string,
+  zip: string
+): Promise<GeoPoint | null> {
+  const key = normalizeAddressKey(street, city, state, zip);
+  const cached = await DB.prepare(
+    "SELECT lat, lng, status FROM geocode_cache WHERE address_key = ?"
+  )
+    .bind(key)
+    .first<{ lat: number | null; lng: number | null; status: string }>();
+
+  if (cached && cached.status === "ok" && cached.lat != null && cached.lng != null) {
+    return { lat: cached.lat, lng: cached.lng };
+  }
+
+  const address = composeAddress(street, city, state, zip);
+  const point = await geocode(address, apiKey);
+  const now = new Date().toISOString();
+  await DB.prepare(
+    `INSERT INTO geocode_cache (address_key, raw_address, lat, lng, miles_from_origin, ors_label, confidence, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
+     ON CONFLICT(address_key) DO UPDATE SET
+       raw_address = excluded.raw_address, lat = excluded.lat, lng = excluded.lng,
+       ors_label = excluded.ors_label, confidence = excluded.confidence, status = excluded.status,
+       updated_at = excluded.updated_at`
+  )
+    .bind(
+      key,
+      address,
+      point?.lat ?? null,
+      point?.lng ?? null,
+      point?.label ?? null,
+      point?.confidence ?? null,
+      point ? "ok" : "geocode_failed",
+      now,
+      now
+    )
+    .run();
+
+  return point;
 }
 
 // Ensures the fixed facility origin is geocoded + cached, returns its point or null if ORS is
@@ -180,16 +251,100 @@ async function resolveLine(
     };
   }
 
-  const placeholders = tokens.map(() => "?").join(",");
-  const found = await DB.prepare(
-    `SELECT bol_number, ship_to_street, ship_to_city, ship_to_state, ship_to_zip
-     FROM bols WHERE bol_number IN (${placeholders})`
+  const bolPlaceholders = tokens.map(() => "?").join(",");
+  const bolFound = await DB.prepare(
+    `SELECT bol_number AS key, ship_to_street, ship_to_city, ship_to_state, ship_to_zip, created_at
+     FROM bols WHERE bol_number IN (${bolPlaceholders})`
   )
     .bind(...tokens)
-    .all<BolRow>();
+    .all<{
+      key: string;
+      ship_to_street: string | null;
+      ship_to_city: string | null;
+      ship_to_state: string | null;
+      ship_to_zip: string | null;
+      created_at: string | null;
+    }>();
 
-  const rows = found.results ?? [];
-  if (rows.length === 0) {
+  const bolRowsByKey = new Map<string, DestRow[]>();
+  for (const row of bolFound.results ?? []) {
+    const key = row.key ?? "";
+    const rows = bolRowsByKey.get(key) ?? [];
+    rows.push({
+      key,
+      ship_to_street: row.ship_to_street ?? "",
+      ship_to_city: row.ship_to_city ?? "",
+      ship_to_state: row.ship_to_state ?? "",
+      ship_to_zip: row.ship_to_zip ?? "",
+      created_at: row.created_at,
+      source: "bol",
+    });
+    bolRowsByKey.set(key, rows);
+  }
+
+  const bolByToken = new Map<string, DestRow | null>();
+  const unresolvedTokens: string[] = [];
+  for (const token of tokens) {
+    const best = pickBest(bolRowsByKey.get(token) ?? []);
+    bolByToken.set(token, best);
+    if (!best || (best.ship_to_zip ?? "").trim() === "") unresolvedTokens.push(token);
+  }
+
+  const bases = Array.from(new Set(unresolvedTokens.map((token) => bolBase(token))));
+  const jobByBase = new Map<string, DestRow | null>();
+  if (bases.length > 0) {
+    const jobPlaceholders = bases.map(() => "?").join(",");
+    const jobFound = await DB.prepare(
+      `SELECT invoice_number AS key, ship_to_street, ship_to_city, ship_to_state, ship_to_zip, created_at
+       FROM jobs WHERE invoice_number IN (${jobPlaceholders})`
+    )
+      .bind(...bases)
+      .all<{
+        key: string;
+        ship_to_street: string | null;
+        ship_to_city: string | null;
+        ship_to_state: string | null;
+        ship_to_zip: string | null;
+        created_at: string | null;
+      }>();
+
+    const jobRowsByKey = new Map<string, DestRow[]>();
+    for (const row of jobFound.results ?? []) {
+      const key = row.key ?? "";
+      const rows = jobRowsByKey.get(key) ?? [];
+      rows.push({
+        key,
+        ship_to_street: row.ship_to_street ?? "",
+        ship_to_city: row.ship_to_city ?? "",
+        ship_to_state: row.ship_to_state ?? "",
+        ship_to_zip: row.ship_to_zip ?? "",
+        created_at: row.created_at,
+        source: "job",
+      });
+      jobRowsByKey.set(key, rows);
+    }
+
+    for (const baseNumber of bases) {
+      jobByBase.set(baseNumber, pickBest(jobRowsByKey.get(baseNumber) ?? []));
+    }
+  }
+
+  const resolved: ResolvedDestination[] = [];
+  for (const token of tokens) {
+    const bolDest = bolByToken.get(token) ?? null;
+    if (bolDest && (bolDest.ship_to_zip ?? "").trim() !== "") {
+      resolved.push({ row: bolDest, fallbackBase: null });
+      continue;
+    }
+
+    const baseNumber = bolBase(token);
+    const jobDest = jobByBase.get(baseNumber) ?? null;
+    if (jobDest && (jobDest.ship_to_zip ?? "").trim() !== "") {
+      resolved.push({ row: jobDest, fallbackBase: baseNumber });
+    }
+  }
+
+  if (resolved.length === 0) {
     return {
       ...base,
       bolNumbers: tokens,
@@ -199,55 +354,155 @@ async function resolveLine(
       shipTo: null,
       miles: null,
       pricePerMile: null,
-      note: "No matching BOL on file.",
+      note: "No matching BOL or order INV# on file.",
     };
   }
 
-  const foundNumbers = new Set(rows.map((r) => r.bol_number));
-  const missing = tokens.filter((t) => !foundNumbers.has(t));
-  const distinctZips = Array.from(new Set(rows.map((r) => r.ship_to_zip)));
+  const resolvedRows = resolved.map((item) => item.row);
+  const zips = distinctZips(resolvedRows);
+  const missing = tokens.filter((token) => !bolRowsByKey.has(token));
+  const fallbackBases = Array.from(
+    new Set(resolved.filter((item) => item.fallbackBase !== null).map((item) => item.fallbackBase as string))
+  );
+  const fallbackNote = fallbackBases.length > 0 ? `address via order INV# ${fallbackBases.join(", ")}.` : "";
 
-  if (distinctZips.length > 1) {
+  if (zips.length === 1) {
+    const chosen = resolved[0];
+    const dest = chosen.row;
+    const miles = await resolveMiles(
+      DB,
+      origin,
+      apiKey,
+      dest.ship_to_street,
+      dest.ship_to_city,
+      dest.ship_to_state,
+      dest.ship_to_zip
+    );
+
+    const shipTo = {
+      city: dest.ship_to_city ?? "",
+      state: dest.ship_to_state ?? "",
+      zip: dest.ship_to_zip ?? "",
+    };
+
+    if (miles == null || miles <= 0) {
+      const note = [
+        missing.length > 0
+          ? `BOL matched (${missing.length} of ${tokens.length} tokens not found); mileage temporarily unavailable.`
+          : "BOL matched; mileage temporarily unavailable.",
+        chosen.fallbackBase ? `address via order INV# ${chosen.fallbackBase}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      return {
+        ...base,
+        bolNumbers: tokens,
+        bolNumber: tokens[0],
+        matchStatus: "unmatched",
+        excludedFromStats: true,
+        shipTo,
+        miles: null,
+        pricePerMile: null,
+        note,
+      };
+    }
+
+    const bolNote =
+      missing.length > 0 ? `${missing.length} of ${tokens.length} BOL tokens not found on file.` : "";
+    const note = [bolNote, fallbackNote].filter(Boolean).join(" ") || undefined;
+    return {
+      ...base,
+      bolNumbers: tokens,
+      bolNumber: tokens[0],
+      matchStatus: "matched",
+      excludedFromStats: false,
+      shipTo,
+      miles,
+      pricePerMile: base.amount / miles,
+      note,
+    };
+  }
+
+  const stops: DestRow[] = [];
+  const stopZips: string[] = [];
+  const seenZips = new Set<string>();
+  for (const item of resolved) {
+    const zip = item.row.ship_to_zip ?? "";
+    if (seenZips.has(zip)) continue;
+    seenZips.add(zip);
+    stops.push(item.row);
+    stopZips.push(zip);
+  }
+
+  const pathKey = `PATH:${stopZips.join(">")}`;
+  const cachedPath = await DB.prepare(
+    "SELECT miles_from_origin, status FROM geocode_cache WHERE address_key = ?"
+  )
+    .bind(pathKey)
+    .first<{ miles_from_origin: number | null; status: string }>();
+
+  let pathMiles: number | null =
+    cachedPath && cachedPath.status === "ok" && cachedPath.miles_from_origin != null
+      ? cachedPath.miles_from_origin
+      : null;
+
+  if (pathMiles == null && origin) {
+    const stopPoints: GeoPoint[] = [];
+    let canRoute = true;
+    for (const stop of stops) {
+      const point = await resolveStopPoint(
+        DB,
+        apiKey,
+        stop.ship_to_street,
+        stop.ship_to_city,
+        stop.ship_to_state,
+        stop.ship_to_zip
+      );
+      if (!point) {
+        canRoute = false;
+        break;
+      }
+      stopPoints.push(point);
+    }
+
+    if (canRoute) {
+      const routedMiles = await routePathMiles([origin, ...stopPoints], apiKey);
+      if (routedMiles != null && routedMiles > 0) {
+        pathMiles = routedMiles;
+        const now = new Date().toISOString();
+        await DB.prepare(
+          `INSERT INTO geocode_cache (address_key, raw_address, lat, lng, miles_from_origin, ors_label, confidence, status, created_at, updated_at)
+           VALUES (?, ?, NULL, NULL, ?, NULL, NULL, ?, ?, ?)
+           ON CONFLICT(address_key) DO UPDATE SET
+             raw_address = excluded.raw_address, miles_from_origin = excluded.miles_from_origin,
+             status = excluded.status, updated_at = excluded.updated_at`
+        )
+          .bind(pathKey, `PATH: ${stopZips.join(" -> ")}`, pathMiles, "ok", now, now)
+          .run();
+      }
+    }
+  }
+
+  const finalStop = stops[stops.length - 1];
+  const shipTo = {
+    city: finalStop.ship_to_city ?? "",
+    state: finalStop.ship_to_state ?? "",
+    zip: finalStop.ship_to_zip ?? "",
+  };
+  const routeNote = `${stops.length}-stop path: ${stopZips.join(" → ")}; ${pathMiles?.toFixed(1) ?? "0.0"} mi`;
+  const note = [routeNote, fallbackNote].filter(Boolean).join(" ") || undefined;
+
+  if (pathMiles == null || pathMiles <= 0) {
     return {
       ...base,
       bolNumbers: tokens,
       bolNumber: tokens[0],
       matchStatus: "multi_destination",
       excludedFromStats: true,
-      shipTo: null,
-      miles: null,
-      pricePerMile: null,
-      note: `Multiple destinations on this line (zips: ${distinctZips.join(", ")}).`,
-    };
-  }
-
-  const dest = rows[0];
-  const miles = await resolveMiles(
-    DB,
-    origin,
-    apiKey,
-    dest.ship_to_street,
-    dest.ship_to_city,
-    dest.ship_to_state,
-    dest.ship_to_zip
-  );
-
-  const shipTo = { city: dest.ship_to_city, state: dest.ship_to_state, zip: dest.ship_to_zip };
-
-  if (miles == null || miles <= 0) {
-    return {
-      ...base,
-      bolNumbers: tokens,
-      bolNumber: tokens[0],
-      matchStatus: "unmatched",
-      excludedFromStats: true,
       shipTo,
       miles: null,
       pricePerMile: null,
-      note:
-        missing.length > 0
-          ? `BOL matched (${missing.length} of ${tokens.length} tokens not found); mileage temporarily unavailable.`
-          : "BOL matched; mileage temporarily unavailable.",
+      note: ["multi-stop; routing temporarily unavailable", fallbackNote].filter(Boolean).join(" "),
     };
   }
 
@@ -255,12 +510,12 @@ async function resolveLine(
     ...base,
     bolNumbers: tokens,
     bolNumber: tokens[0],
-    matchStatus: "matched",
+    matchStatus: "multi_destination",
     excludedFromStats: false,
     shipTo,
-    miles,
-    pricePerMile: base.amount / miles,
-    note: missing.length > 0 ? `${missing.length} of ${tokens.length} BOL tokens not found on file.` : undefined,
+    miles: pathMiles,
+    pricePerMile: base.amount / pathMiles,
+    note,
   };
 }
 
@@ -371,7 +626,7 @@ export async function POST(req: Request) {
 
     const flagRows = await DB.prepare(
       `SELECT ship_to_zip, ship_to_city, amount, miles FROM freight_invoice_lines
-       WHERE excluded_from_stats = 0 AND ship_to_zip IS NOT NULL AND miles IS NOT NULL`
+       WHERE match_status = 'matched' AND ship_to_zip IS NOT NULL AND miles IS NOT NULL`
     ).all<{ ship_to_zip: string; ship_to_city: string; amount: number; miles: number }>();
     const historyRows: FlagRow[] = (flagRows.results ?? []).map((r) => ({
       zip: r.ship_to_zip,
