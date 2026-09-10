@@ -1836,6 +1836,27 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-n — Invoice Analytics: fix multi-stop routing — Directions endpoint returns nothing,
+  sum matrix legs instead (next-platform-agent §9a, single-function fix, no DB migration).**
+  Root cause verified against prod: multi-destination lines geocode every stop correctly (0
+  geocode failures) but `routePathMiles` returned null every time — 0 `PATH:` cache rows ever
+  written in `geocode_cache`, so all 3 known multi-destination lines (loads 49344/49698/49998)
+  stayed excluded as "mileage unavailable." The single-destination matrix endpoint
+  (`drivingMiles`) works fine with the same API key (71 lines have miles); the Directions
+  endpoint (`/v2/directions/driving-car`) `routePathMiles` called is the thing failing for this
+  account. Fix: `routePathMiles` (`cutting-pilot/src/lib/logistics/ors.ts`) now sums `drivingMiles`
+  over consecutive point pairs (origin → stop 1 → stop 2 → …) instead of calling Directions —
+  same proven matrix call the single-destination path already relies on. Signature/call site in
+  `invoice/route.ts` unchanged. **Known limitation, not fixed here (out of this prompt's scope,
+  flagging for Steve before the Replace re-upload)**: `invoice/route.ts` only caches the *whole
+  path* result under a `PATH:` key, not each individual leg — `routePathMiles`'s per-leg
+  `drivingMiles` calls are uncached, so a multi-destination line's resolution costs N matrix
+  calls on every cache miss (and re-costs all N again if a later leg fails and nothing gets
+  cached). With only 3 known multi-destination lines this should be well within ORS's per-minute
+  matrix quota, but if the upcoming Replace re-upload shows mileage still unavailable on those
+  loads, check for a 429/quota response before assuming the fix itself didn't work.
+  `npx tsc --noEmit` + `npm run cf-build` both green.
+
 - **PXXX-c — v2 Loading Dashboard: Pull Job flow + photo gallery lightbox (next-platform-agent
   §9a for the new route + react-component-agent §9b for the UI, no DB migration).** **§9a**: new
   `GET /v2/api/jobs?search=` (`src/app/api/jobs/route.ts`) — ports only the search branch of

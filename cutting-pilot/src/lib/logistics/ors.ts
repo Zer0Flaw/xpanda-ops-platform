@@ -64,21 +64,18 @@ export async function drivingMiles(origin: GeoPoint, dest: GeoPoint, apiKey: str
   }
 }
 
-// Directions (driving-car) total distance in miles for an ordered path of >=2 points.
-// Returns null on error / missing key (caller keeps the line resolved-but-unrouted).
+// Total distance in miles for an ordered path of >=2 points, computed by summing sequential
+// matrix legs (origin -> stop 1 -> stop 2 -> ...) instead of calling the Directions endpoint,
+// which returns nothing for this account (0 PATH: cache rows ever written — verified against
+// prod). The matrix endpoint is the proven call (drivingMiles already resolves single-destination
+// lines). Returns null on error / missing key (caller keeps the line resolved-but-unrouted).
 export async function routePathMiles(points: GeoPoint[], apiKey: string): Promise<number | null> {
   if (!apiKey || points.length < 2) return null;
-  try {
-    const res = await fetch("https://api.openrouteservice.org/v2/directions/driving-car", {
-      method: "POST",
-      headers: { Authorization: apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: points.map((p) => [p.lng, p.lat]) }),
-    });
-    if (!res.ok) return null;
-    const body: any = await res.json();
-    const meters = body?.routes?.[0]?.summary?.distance ?? body?.features?.[0]?.properties?.summary?.distance;
-    return typeof meters === "number" ? meters * 0.000621371 : null;
-  } catch {
-    return null;
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const leg = await drivingMiles(points[i], points[i + 1], apiKey);
+    if (leg == null) return null; // any leg unavailable -> whole path unavailable; caller degrades gracefully
+    total += leg;
   }
+  return total > 0 ? total : null;
 }
