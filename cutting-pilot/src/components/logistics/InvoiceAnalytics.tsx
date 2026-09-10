@@ -12,6 +12,7 @@ import InfoTip from "@/components/InfoTip";
 import { parseInvoicePdf, type ParsedInvoice } from "@/lib/logistics/parseInvoicePdf";
 import ZipLinesModal from "@/components/logistics/ZipLinesModal";
 import FinancialsPanel from "@/components/logistics/FinancialsPanel";
+import InvoiceResultToolbar from "@/components/logistics/InvoiceResultToolbar";
 
 interface Props {
   userName: string;
@@ -188,18 +189,20 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
 
   return (
     <div className="min-h-screen flex flex-col bg-bg">
-      <PlatformHeader
-        userName={userName}
-        isAdmin={isAdmin}
-        permissions={permissions}
-        title="Invoice Analytics · v2"
-        currentPath="/v2/logistics/invoice-analytics"
-      />
+      <div className="no-print">
+        <PlatformHeader
+          userName={userName}
+          isAdmin={isAdmin}
+          permissions={permissions}
+          title="Invoice Analytics · v2"
+          currentPath="/v2/logistics/invoice-analytics"
+        />
+      </div>
 
       <div className="flex-1 w-full max-w-[1100px] mx-auto px-4 py-6 space-y-6">
         <h1 className="text-xl font-semibold text-text">Invoice Analytics</h1>
 
-        <div role="tablist" className="flex gap-1 border-b border-[var(--card-border)]">
+        <div role="tablist" className="no-print flex gap-1 border-b border-[var(--card-border)]">
           {(["upload", "history", "financials"] as const).map((t) => (
             <button
               key={t}
@@ -220,7 +223,7 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
 
         {tab === "upload" && (
           <>
-            <section>
+            <section className="no-print">
               <label
                 htmlFor="invoice-pdf-input"
                 onDragOver={(e) => {
@@ -279,10 +282,13 @@ export default function InvoiceAnalytics({ userName, isAdmin, permissions }: Pro
 
             {result && (
               <>
-                <MatchRateBanner summary={result.summary} vendor={result.invoice.vendor} invoiceNumber={result.invoice.invoiceNumber} />
-                <SummaryCards summary={result.summary} />
-                <LineTable lines={result.lines} />
-                <FlagsPanels flags={result.flags} />
+                <InvoiceResultToolbar result={result} label={result.invoice.invoiceNumber} />
+                <div className="invoice-print-region space-y-6">
+                  <MatchRateBanner summary={result.summary} vendor={result.invoice.vendor} invoiceNumber={result.invoice.invoiceNumber} />
+                  <SummaryCards summary={result.summary} />
+                  <LineTable lines={result.lines} />
+                  <FlagsPanels flags={result.flags} />
+                </div>
               </>
             )}
 
@@ -537,7 +543,7 @@ function HistoryPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
+      <div className="no-print flex items-center gap-2">
         <label htmlFor="history-month" className="text-sm font-medium text-text">
           Month
         </label>
@@ -564,14 +570,22 @@ function HistoryPanel() {
 
       {payload.result && (
         <>
-          <MatchRateBanner
-            summary={payload.result.summary}
-            vendor={payload.result.invoice.vendor}
-            invoiceNumber={payload.result.invoice.invoiceNumber}
+          <InvoiceResultToolbar
+            result={payload.result}
+            label={payload.month ?? ""}
+            showAnnual
+            year={(payload.month ?? "").slice(0, 4)}
           />
-          <SummaryCards summary={payload.result.summary} />
-          <LineTable lines={payload.result.lines} />
-          <FlagsPanels flags={payload.result.flags} />
+          <div className="invoice-print-region space-y-6">
+            <MatchRateBanner
+              summary={payload.result.summary}
+              vendor={payload.result.invoice.vendor}
+              invoiceNumber={payload.result.invoice.invoiceNumber}
+            />
+            <SummaryCards summary={payload.result.summary} />
+            <LineTable lines={payload.result.lines} />
+            <FlagsPanels flags={payload.result.flags} />
+          </div>
         </>
       )}
     </div>

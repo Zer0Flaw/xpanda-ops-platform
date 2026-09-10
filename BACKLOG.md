@@ -233,6 +233,10 @@
   transaction — if a `persistLine` INSERT fails partway through the persist loop, the old rows are
   already gone and only partial new rows exist. `DB.batch([...])` would make it atomic but needs
   `persistLine` restructured to return a statement instead of executing it.
+- [ ] **Invoice export: PDF export option / branded print header** — deferred. PXXX-k shipped
+  browser print (`window.print()`) + XLSX export for both the per-invoice/per-month view and an
+  annual rollup; a true PDF export and a branded (logo/letterhead) print header were named in the
+  prompt as future-nice but out of this pass's scope.
 - [ ] **Invoice Analytics — native driving-distance for multi-stop lines.** v1 excludes `multi_destination` lines (multiple BOL tokens resolving to different ZIPs on one invoice line) from stats entirely rather than computing a real multi-stop route distance.
 - [ ] **Invoice Analytics — no Seal Express sample invoice was available to validate unit D's PDF parser.** Only one real vendor sample (`26.03 Lisma Invoice Details 4611.pdf`) exists in the repo; the column-detection logic is written to the same vendor-agnostic rule the prompt specifies for both vendors, but Seal's actual layout was never exercised. Get a real Seal invoice and re-run the same end-to-end validation (parse → `extractBolTokens` → token count) before trusting it blind.
 - [ ] **v2 logistics rollout**: remove the two `logistics.v2` rules from `middleware.ts` (granular `logistics.*` rules resume); grant `logistics.v2` to the appropriate roles or retire the key + label. Wire nav links only at cutover (still unlinked until then).

@@ -1836,6 +1836,58 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-k — Invoice Analytics: browser print + XLSX export (per-invoice/per-month + annual)
+  (next-platform-agent §9a + react-component-agent §9b, net-new export lib + toolbar component +
+  one net-new read-only route, no DB migration — `annual/route.ts` only reads
+  `freight_invoice_lines`).** Both the Upload results view and History's monthly view now carry a
+  shared `<InvoiceResultToolbar>` (Print + Export) above the results. **Print**: plain
+  `window.print()`; a `@media print` block in `globals.css` hides chrome (`PlatformHeader`, tab
+  strip, upload dropzone, the toolbar itself) via `.no-print { display:none }` and forces
+  `.invoice-print-region { display:block }` around the four result components on each view, plus
+  page-break rules on the line table. **Export**: new `src/lib/logistics/invoiceExport.ts` (pure
+  SheetJS, no React) — `buildMonthWorkbook` (Lines + Summary sheets, `freight-<label>.xlsx`) and
+  `buildAnnualWorkbook` (Summary/By ZIP/Top lanes/Variance/All lines sheets,
+  `freight-annual-<year>.xlsx`); every `json_to_sheet` call passes an explicit `header` array so an
+  empty result set still emits a header-only sheet instead of throwing or coming back blank.
+  History's export additionally offers an annual rollup via a new `<SplitButton>` (primary click =
+  export the shown month; caret menu = "Annual report (.xlsx)"), backed by a new net-new route
+  **`GET /v2/api/logistics/annual?year=YYYY`** — year resolved from the query param or
+  `MAX(substr(invoice_date,1,4))`, combining `analytics/route.ts`'s aggregate shape
+  (totals/monthly/topLanes/perZip/zipVariance, via the shared `computePerZip`/`computeZipVariance`
+  helpers) with `month/route.ts`'s per-line flattening (`bolNumbers[]` parsed, `note` derived from
+  `match_status`), all scoped `WHERE substr(invoice_date,1,4) = ?`. `SplitButton.tsx` is a new
+  platform-generic primitive (not logistics-specific) — primary button + caret menu, closes on
+  Escape/outside-click, same pattern as `InfoTip.tsx`. **`advisor()` pre-commit pass caught two real
+  issues, both fixed before commit**: (1) `LineTable`'s wrapper is `overflow-x-auto` with
+  `min-w-[900px]` on the `<table>` — on paper there's no scrollbar, so without an override the
+  right-hand money columns (Amount/$/mi/Status) would print clipped off the page, defeating the
+  whole point of a printable invoice for Steve to hand an accountant. Fixed by adding
+  `.invoice-print-region .overflow-x-auto { overflow: visible !important; }` and
+  `.invoice-print-region table { min-width: 0 !important; width: 100% !important; }` to the same
+  `@media print` block. (2) History's `activeMonth = selected ?? payload.month ?? ""` could lead
+  the data it labels: `selected` (the -i race-condition fix) updates synchronously on dropdown
+  change, but `payload.result` still holds the *previous* month's rows until the refetch resolves,
+  and Export isn't gated on `loading` — clicking Export mid-refetch produced a file with last
+  month's line data named for the newly-selected month. Fixed by using `payload.month` directly for
+  both the toolbar's `label` and `year` props (it's always in lockstep with `payload.result` since
+  both come from the same response); `activeMonth` was removed as dead code. **Verified rather than
+  assumed** (advisor flagged this as a claim worth settling without a browser): ran
+  `node -e "...json_to_sheet([], {header:[...]})..."` directly against the installed `xlsx` package
+  — confirmed it emits a header-only sheet (`A1:B1`, non-empty CSV) for an empty row array, so the
+  prompt's "never throw on zero rows" requirement holds for every sheet in `invoiceExport.ts`
+  without needing an `aoa_to_sheet` fallback. **One gap intentionally not closed**: the `@media
+  print` layout itself (page breaks, hidden chrome, clipped-table fix) was verified by reading the
+  CSS and cross-checking selectors against the DOM structure, not by opening a browser and printing
+  — this repo's standing browser-automation guidance is not to drive Chrome without being asked, so
+  Steve should do one real print-preview pass on both views before relying on this for an actual
+  handoff. `npx tsc --noEmit` + `npm run cf-build` green (both re-run clean after the two advisor
+  fixes). Single commit: `invoiceExport.ts` (new) + `SplitButton.tsx` (new) + `annual/route.ts`
+  (new) + `InvoiceResultToolbar.tsx` (new) + `globals.css` (print rules appended) +
+  `InvoiceAnalytics.tsx` (edited) + `CHANGELOG.md` + `BACKLOG.md`, staged by explicit path.
+  `BACKLOG.md`: added the prompt's own deferral ("Invoice export: PDF export option / branded print
+  header"). No migration. **Terminates at ready-to-push per this prompt's own instruction — not
+  pushed.**
+
 - **PXXX-j — Invoice Analytics: duplicate-invoice failsafe (block + Replace confirm + clean-replace)
   (next-platform-agent §9a + react-component-agent §9b, ingest-route edit + upload-flow confirm
   modal, no DB migration — a scoped `DELETE` on the existing `freight_invoice_lines` table on

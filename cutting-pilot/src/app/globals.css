@@ -173,3 +173,15 @@ html.wall-cursor-hidden * {
   from { transform: translateY(0); }
   to   { transform: translateY(calc(-1 * var(--sched-scroll-h, 0px))); }
 }
+
+/* Invoice Analytics print support (PXXX-k): clean browser print of the shown results, on both
+   the upload and History (monthly) screens. Hide chrome via display:none rather than visibility
+   hacks so hidden elements don't reserve print-page space. */
+@media print {
+  .no-print { display: none !important; }
+  .invoice-print-region { display: block !important; }
+  .invoice-print-region table { page-break-inside: auto; }
+  .invoice-print-region tr { page-break-inside: avoid; }
+  .invoice-print-region .overflow-x-auto { overflow: visible !important; }
+  .invoice-print-region table { min-width: 0 !important; width: 100% !important; }
+}
