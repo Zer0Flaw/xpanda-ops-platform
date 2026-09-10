@@ -246,9 +246,17 @@
 - [ ] **Unit 2 follow-up — verify local `wrangler dev --remote` smoke before flipping the write fence.** This unit's `tsc`/`cf-build` gates are green, but a bare `next dev` in this sandbox can't reach D1 (`getEnv()` hangs indefinitely rather than erroring) and can't route legacy-served `/logistics/assets/*` (the BOL template/font files), so the dashboard's real data load, the Generate modal's fenced-write banner, and the Viewer/Editor's PDF paths were never smoke-tested against live data. Run a real `wrangler dev --remote` (or deploy to a preview) pass first.
 - [ ] **Unit 3 — load builder port + packing-logic rework.** Ports `logistics/load-builder.html` (trailer load planning, auto-pack algorithm, saved loads, BOL generation via the unit-1/2 engine).
 - [ ] **Floor-test `/v2/logistics/loading` before retiring legacy `logistics/loading.html`.** Unit 3b's dock dashboard is writes-LIVE but unlinked (v2 visibility gate) and its `wrangler dev` smoke against scratch bindings is still owed (unit 3a's `preview_database_id` was a placeholder when 3b was built — see its `CHANGELOG.md` entry). Run the scratch smoke pass, then floor-test against real data before wiring it into nav or retiring the legacy page.
-- [ ] **Unit 3b follow-up — "+ Pull Job" onboarding flow has no UI trigger.** `POST /v2/api/loading-assignments` (adopt-first create) is implemented server-side per the prompt's endpoint list, but the search-and-select UI legacy's `openPullJobModal`/`searchJobsForPull` provides needs a `/v2/api/jobs?search=` (or similar) endpoint that doesn't exist in v2 yet. Build it, then wire a Pull Job modal into `DockBoard.tsx`.
-- [ ] **Unit 3b follow-up — photo gallery lightbox for previously-uploaded loading photos.** The dock dashboard's Loaded checklist covers capture/upload; browsing photos already on a load (legacy's `photoGallery.openLightbox`) was cut as out of scope. Only a passive count badge shows today.
-- [ ] **Unit 3b follow-up — i18n for the new dock dashboard labels.** `DockAssignmentCard.tsx`/`AssignBayModal.tsx`/`LoadedChecklistModal.tsx`/`DockBoard.tsx`/`TeamView.tsx`/`BayListItem.tsx` ship English-only strings (v2 has no i18n spine wired yet, matching every other v2 UI unit so far) — needs a pass once v2 gains one.
+- [ ] **Unit 3b follow-up — i18n for the new dock dashboard labels.** `DockAssignmentCard.tsx`/`AssignBayModal.tsx`/`LoadedChecklistModal.tsx`/`DockBoard.tsx`/`TeamView.tsx`/`BayListItem.tsx`/`ShippingInfoModal.tsx`/`PullJobModal.tsx`/`PhotoGalleryModal.tsx` ship English-only strings (v2 has no i18n spine wired yet, matching every other v2 UI unit so far) — needs a pass once v2 gains one.
+- [ ] **PXXX-c finding — confirm the "always not_started" Pull-Job bay behavior with Steve.**
+  Ported byte-for-byte from legacy's `confirmPullJob`: pulling a specific load onto a bay always
+  sets `loading_status: 'not_started'`, even when "Awaiting Queue (no bay)" is chosen (`bay_id:
+  null`). A `not_started` row with no `bay_id` doesn't render in any Overview section (Awaiting
+  filters on `loading_status === 'awaiting'`, bay columns filter on `bay_id === bay.id`) or in
+  Team View's bay list/drill-in — it becomes invisible until someone assigns it a bay or edits
+  its status directly. This looks like a pre-existing legacy quirk (not introduced here), not
+  touched per AGENTS.md's "don't redesign around a bug you found" rule — flag to Steve next
+  contact; a fix (job-level `POST`'s bay-presence-gated status logic already handles the null-bay
+  case correctly) would need his sign-off since it changes legacy behavior too.
 - [ ] **PXXX-b follow-up — `?shipment=` notification deep link can't resolve.** Legacy's
   `openFromNotificationDeepLink` resolves a shipment id to its job/load via
   `GET /api/shipments?id=<shipmentId>` (single-record lookup). v2's `/v2/api/shipments` route

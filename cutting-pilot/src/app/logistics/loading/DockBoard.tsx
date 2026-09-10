@@ -22,12 +22,10 @@
 //     `?job_id=`), and adding it would be an API change this prompt's own scope excludes --
 //     logged to BACKLOG.md. `?assignment=` deep-linking (scroll + highlight, no modal auto-open
 //     -- a deliberate -b deviation from legacy's auto-opened Shipping Info modal) IS ported.
-//   - The "+ Pull Job" search-and-onboard flow (needs a job-search endpoint that doesn't exist in
-//     v2 yet -- POST /v2/api/loading-assignments is still implemented server-side per unit 3b's
-//     original prompt, just with no UI trigger until PXXX-c).
-//   - The photo gallery lightbox (view already-uploaded photos) -- capture/upload during the
-//     Loaded checklist is in scope; browsing prior uploads is not. A photo-count badge shows how
-//     many exist.
+//   - PXXX-c (this pass) added the "+ Pull Job" search-and-onboard flow (new
+//     GET /v2/api/jobs?search=, manager-only, visible in both Overview and Team View) and the
+//     photo gallery lightbox (view already-uploaded photos, wired to a new Photos action button
+//     -- there was no such button before this pass, only the passive count badge).
 // The This Week / Show All toggle IS kept (not decorative -- without it Delivered/Awaiting grow
 // unbounded at any real data volume).
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -37,6 +35,8 @@ import DockAssignmentCard from "@/components/loading/DockAssignmentCard";
 import AssignBayModal from "@/components/loading/AssignBayModal";
 import LoadedChecklistModal from "@/components/loading/LoadedChecklistModal";
 import ShippingInfoModal from "@/components/loading/ShippingInfoModal";
+import PullJobModal from "@/components/loading/PullJobModal";
+import PhotoGalleryModal from "@/components/loading/PhotoGalleryModal";
 import BolViewerModal from "@/components/logistics/BolViewerModal";
 import TeamView from "./TeamView";
 import { sortAssignments, type LdSortOrder } from "@/components/loading/sortAssignments";
@@ -76,6 +76,8 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
   const [checklistTarget, setChecklistTarget] = useState<DockAssignment | null>(null);
   const [viewerTarget, setViewerTarget] = useState<{ jobId: string; loadNumber: number | null } | null>(null);
   const [shippingInfoTarget, setShippingInfoTarget] = useState<DockAssignment | null>(null);
+  const [pullJobOpen, setPullJobOpen] = useState(false);
+  const [photoGalleryJobId, setPhotoGalleryJobId] = useState<string | null>(null);
   const jobCacheRef = useRef<Map<string, any>>(new Map());
 
   const searchParams = useSearchParams();
@@ -322,6 +324,10 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
     setShippingInfoTarget(a);
   }
 
+  function handleShowPhotos(a: DockAssignment) {
+    setPhotoGalleryJobId(a.job_id);
+  }
+
   // --- Touch drag for Overview (PXXX-b) -----------------------------------------------------
   // HTML5 drag-and-drop (used above for mouse) has no touch equivalent, so this ports legacy's
   // initTouchDragForOverview + document-level touchmove/touchend by hand: a floating clone
@@ -454,6 +460,7 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
     onTrailerChange: handleTrailerChange,
     onViewBol: handleViewBol,
     onShowShippingInfo: handleShowShippingInfo,
+    onShowPhotos: handleShowPhotos,
   };
 
   function renderCard(a: DockAssignment, extraProps?: { showArchive?: boolean }) {
@@ -552,6 +559,15 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
               <option value="inv_desc">INV# ↓</option>
               <option value="date_asc">Date added</option>
             </select>
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => setPullJobOpen(true)}
+                className="min-h-[44px] px-3.5 rounded-md bg-[var(--primary-bg)] text-[var(--primary-text)] text-xs font-semibold cursor-pointer hover:opacity-90 transition-opacity"
+              >
+                + Pull Job
+              </button>
+            )}
           </div>
         </div>
 
@@ -767,6 +783,21 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
         jobCache={jobCacheRef.current}
         onClose={() => setShippingInfoTarget(null)}
       />
+
+      {pullJobOpen && (
+        <PullJobModal
+          bays={bays}
+          assignments={assignments}
+          defaultBayId={view === "team" && selectedBayId !== null ? selectedBayId : null}
+          onClose={() => setPullJobOpen(false)}
+          onDone={() => {
+            setPullJobOpen(false);
+            load();
+          }}
+        />
+      )}
+
+      <PhotoGalleryModal jobId={photoGalleryJobId} onClose={() => setPhotoGalleryJobId(null)} />
     </div>
   );
 }

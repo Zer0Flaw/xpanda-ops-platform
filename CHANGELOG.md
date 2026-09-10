@@ -1836,6 +1836,47 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-c — v2 Loading Dashboard: Pull Job flow + photo gallery lightbox (next-platform-agent
+  §9a for the new route + react-component-agent §9b for the UI, no DB migration).** **§9a**: new
+  `GET /v2/api/jobs?search=` (`src/app/api/jobs/route.ts`) — ports only the search branch of
+  legacy's jobs GET (LIKE across customer/po_number/invoice_number, `limit` capped the same way,
+  `include_archived`); read-only, no POST/PUT/DELETE in this file. Deliberately selects a small
+  column set (id/customer/po_number/invoice_number/status/ship_date/load_count) rather than
+  legacy's full `JOB_LIST_COLS` line-item batch-fetch machinery, which this search-and-pull
+  lookup has no use for. Middleware: `/v2/api/jobs`'s permission rule widened to
+  `["jobs", "logistics.loading"]` (OR-matched) — resolves the dependency PXXX-b's own CHANGELOG
+  entry flagged (`ShippingInfoModal`'s `GET /v2/api/jobs/{job_id}` shares this same bare prefix)
+  in the same stroke as authorizing this new route's own access. **§9b**: new
+  `PullJobModal.tsx` (composes `Modal`) ports `openPullJobModal`/`searchJobsForPull`/
+  `selectPullRow`/`confirmPullJob` — debounced search (≥2 chars, 300ms, a `seqRef` sequence
+  guard drops superseded responses, same pattern as `OrderEntryForm`'s holey-preview debounce),
+  one selectable row PER LOAD (P311 parity) by joining each matched job to `assignments` in
+  memory by `job_id`, a job-level fallback row for jobs with no in-memory assignment (e.g.
+  customer pickup). "Assign to" defaults to the drilled-in bay when opened from Team View's
+  drill-in screen — gated on `view === 'team' && selectedBayId !== null`, which (unlike legacy's
+  own `#ld-bay-view` visibility check workaround) is correct by construction here since React
+  state, not a DOM style flag, is the source of truth and `onSelectBay(null)` really does clear
+  it. Confirm PUTs the selected load's `bay_id` + forces `loading_status: 'not_started'`
+  (ported byte-for-byte, including when "Awaiting Queue" is chosen — see the BACKLOG finding
+  below) or, for the job-level fallback, POSTs the existing adopt-first-gated
+  `/v2/api/loading-assignments` route. New `+ Pull Job` toolbar button, manager-only
+  (`isAdmin || permissions['logistics.loading.manage']?.edit`), visible in both Overview and
+  Team View, `min-h-[44px]`. New `PhotoGalleryModal.tsx` (composes `Modal`) — fetches
+  `GET /v2/api/loading-photos?job_id=` (by job, not assignment: the card's `photo_count` badge is
+  itself a per-job count in the assignments query, so an `assignment_id` filter would show fewer
+  photos than the badge promises — checked, not assumed) and displays each via
+  `GET /v2/api/loading-photos/{id}/image`; thumbnail strip + full-size view, ‹›-button and
+  keyboard-arrow navigation, plus hand-rolled touch swipe (no library) — all controls `≥44px`.
+  Wired to a **new** `Photos` action button on `DockAssignmentCard.tsx` (disabled when
+  `photo_count === 0`) — this prompt's own text described it as already-existing-but-inert, but
+  the card only ever had a passive photo-count badge before this pass (verified by reading the
+  component, not assumed); built + wired in one step rather than chasing a button that wasn't
+  there. `npx tsc --noEmit` + `npm run cf-build` both green; `grep -rn "teamView"` still empty.
+  Closes two "Unit 3b follow-up" BACKLOG items (Pull Job UI trigger, photo gallery lightbox);
+  the i18n follow-up item was extended to name the three new files; a new finding was logged
+  (not fixed, ported faithfully) about the Pull-Job "always not_started" bay-assignment quirk —
+  worth a floor conversation with Steve, see `BACKLOG.md`.
+
 - **PXXX-b — v2 Loading Dashboard: Overview parity gaps — search, sort, collapse, Shipping Info,
   touch drag (react-component-agent §9b, no DB migration, no middleware change — see the
   known-dependency note below).** Ports legacy's `ldMatchesSearch`/`ldOverviewSet`/`sortAssignments`/

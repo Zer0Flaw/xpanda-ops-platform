@@ -40,6 +40,7 @@ export default function DockAssignmentCard({
   onTrailerChange,
   onViewBol,
   onShowShippingInfo,
+  onShowPhotos,
   showArchive = false,
   isDragging = false,
   draggable: isDraggable = false,
@@ -186,6 +187,16 @@ export default function DockAssignmentCard({
             View BOL
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => a.photo_count > 0 && onShowPhotos(a)}
+          disabled={a.photo_count === 0}
+          title={a.photo_count === 0 ? "No photos attached to this load yet" : undefined}
+          className={`${ACTION_BTN} disabled:opacity-40 disabled:cursor-default inline-flex items-center gap-1`}
+        >
+          <Camera size={11} aria-hidden="true" />
+          Photos
+        </button>
         {canManage && a.bay_id && ["not_started", "loading", "loaded"].includes(a.loading_status) && (
           <button type="button" onClick={() => onMoveToYard(a)} className={ACTION_BTN_WARN}>
             Move to yard

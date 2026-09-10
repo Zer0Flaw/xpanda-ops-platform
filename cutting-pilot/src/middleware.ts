@@ -58,7 +58,14 @@ const PERMISSION_MAP: Array<{ prefix: string; keys: string[] }> = [
   { prefix: "/v2/logistics/loading", keys: ["logistics.v2"] },
   { prefix: "/v2/logistics", keys: ["logistics.v2"] },
   { prefix: "/v2/logistics/loading", keys: ["logistics.loading"] },
-  { prefix: "/v2/api/jobs", keys: ["jobs"] },
+  // PXXX-c: PullJobModal's GET /v2/api/jobs?search= (and ShippingInfoModal's GET
+  // /v2/api/jobs/:id from PXXX-b) both live under this same prefix as the pre-existing
+  // /v2/api/jobs/:id lookup (BolGenerateModal), so they can't get their own more-specific rule --
+  // a bare-prefix match is the finest grain this table supports. Widened to OR in
+  // "logistics.loading" rather than repointing the key entirely: `keys` grants on ANY match
+  // (see permissionKeysFor below), so this is additive and non-breaking for the existing "jobs"-
+  // gated caller.
+  { prefix: "/v2/api/jobs", keys: ["jobs", "logistics.loading"] },
   { prefix: "/v2/api/shipments", keys: ["logistics.dashboard"] },
   { prefix: "/v2/logistics", keys: ["logistics.dashboard"] },
 ];
