@@ -46,6 +46,22 @@ export interface DockBay {
   trailer_number: string | null;
 }
 
+// Shared action-handler contract for DockAssignmentCard -- lets both DockBoard's Overview
+// rendering and TeamView.tsx (PXXX-a) pass the same handler set without redeclaring the shape
+// in two places.
+export interface CardActionHandlers {
+  canManage: boolean;
+  onAdvance: (a: DockAssignment, next: string) => void;
+  onAssignBay: (a: DockAssignment) => void;
+  onMoveToYard: (a: DockAssignment) => void;
+  onRevertToBay: (a: DockAssignment) => void;
+  onRevertYardToBay: (a: DockAssignment) => void;
+  onSendBackToQueue: (a: DockAssignment) => void;
+  onArchive: (a: DockAssignment) => void;
+  onTrailerChange: (a: DockAssignment, value: string) => void;
+  onViewBol: (a: DockAssignment) => void;
+}
+
 export const LOADING_FLOW = ["awaiting", "not_started", "loading", "loaded", "in_transit", "delivered"];
 
 export function nextLoadingStatus(current: string): string | null {

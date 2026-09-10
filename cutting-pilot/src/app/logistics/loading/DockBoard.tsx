@@ -11,8 +11,10 @@
 // and the v2 cutting boards).
 //
 // Deliberate scope cuts from legacy/loading.html (documented in CHANGELOG.md/BACKLOG.md):
-//   - "Loading Team View" (single-bay drill-down, mobile-first bay list) -- this single
-//     responsive board serves both roles; permission just hides manager-only actions.
+//   - PXXX-a (this pass) ported "Loading Team View" 1:1 as its own two-screen stack
+//     (TeamView.tsx) -- the prior single-responsive-board design (a boolean flag on this
+//     component hiding sections on the same 6-column grid) is retired; see TeamView.tsx/
+//     BayListItem.tsx.
 //   - Drag-and-drop (mouse + touch) for bay/queue moves -- every drag target already has an
 //     equivalent action button (Assign to bay / Move to yard / etc.), so no capability is lost,
 //     only a redundant interaction mode. Floor-grade ≥44px buttons are the primary path anyway.
@@ -32,7 +34,8 @@ import DockAssignmentCard from "@/components/loading/DockAssignmentCard";
 import AssignBayModal from "@/components/loading/AssignBayModal";
 import LoadedChecklistModal from "@/components/loading/LoadedChecklistModal";
 import BolViewerModal from "@/components/logistics/BolViewerModal";
-import { inCurrentWeek, type DockAssignment, type DockBay } from "@/components/loading/dockTypes";
+import TeamView from "./TeamView";
+import { inCurrentWeek, type CardActionHandlers, type DockAssignment, type DockBay } from "@/components/loading/dockTypes";
 
 interface DockBoardProps {
   userName: string;
@@ -51,7 +54,8 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [teamView, setTeamView] = useState(false);
+  const [view, setView] = useState<"overview" | "team">("overview");
+  const [selectedBayId, setSelectedBayId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
 
@@ -82,6 +86,21 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
   useEffect(() => {
     load();
   }, [load]);
+
+  // Responsive default view, computed once on mount (never re-applied after a manual toggle --
+  // this effect only ever runs once, on the empty-deps mount). Must run in an effect, not during
+  // render, so SSR/CSR hydration never desyncs on window.matchMedia.
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 767px)").matches) setView("team");
+  }, []);
+
+  // Switching INTO Team View via the toolbar toggle always lands on the bay list (screen 1),
+  // matching legacy's setLdView('bay') -- drillIntoBay/backToBayList are separate actions from
+  // the toggle itself.
+  function handleSetView(next: "overview" | "team") {
+    setView(next);
+    if (next === "team") setSelectedBayId(null);
+  }
 
   async function putAssignment(id: string, body: Record<string, unknown>): Promise<boolean> {
     setActionError(null);
@@ -158,7 +177,6 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
   }
 
   function cardDraggable(a: DockAssignment): boolean {
-    if (teamView) return false;
     // Terminal statuses are never draggable
     if (["in_transit", "delivered", "archived"].includes(a.loading_status)) return false;
     // Yard cards use their explicit "Move back to bay" button instead
@@ -216,7 +234,7 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
   const transit = set.filter((a) => a.loading_status === "in_transit");
   const delivered = set.filter((a) => a.loading_status === "delivered");
 
-  const cardHandlers = {
+  const cardHandlers: CardActionHandlers = {
     canManage,
     onAdvance: handleAdvance,
     onAssignBay: handleAssignBay,
@@ -227,7 +245,6 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
     onArchive: handleArchive,
     onTrailerChange: handleTrailerChange,
     onViewBol: handleViewBol,
-    teamView,
   };
 
   function renderCard(a: DockAssignment, extraProps?: { showArchive?: boolean }) {
@@ -259,14 +276,46 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
       <div className="flex-1 w-full max-w-screen-2xl mx-auto px-4 py-6 space-y-5">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <h1 className="text-xl font-semibold text-text">Loading dashboard</h1>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setTeamView((v) => !v)}
-              className="h-8 px-3 rounded-md border border-[var(--input-border)] bg-[var(--card-bg)] text-text text-xs font-semibold cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
-            >
-              {teamView ? "Manager view" : "Team view"}
-            </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex rounded-md border border-[var(--input-border)] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => handleSetView("overview")}
+                className="h-8 px-3.5 text-xs font-semibold cursor-pointer transition-colors"
+                style={
+                  view === "overview"
+                    ? { background: "var(--accent)", color: "var(--bg)" }
+                    : { background: "var(--surface)", color: "var(--muted)" }
+                }
+              >
+                Overview
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetView("team")}
+                className="h-8 px-3.5 text-xs font-semibold cursor-pointer transition-colors"
+                style={
+                  view === "team"
+                    ? { background: "var(--accent)", color: "var(--bg)" }
+                    : { background: "var(--surface)", color: "var(--muted)" }
+                }
+              >
+                Loading Team View
+              </button>
+            </div>
+            {view === "team" && selectedBayId !== null && (
+              <select
+                value={selectedBayId}
+                onChange={(e) => setSelectedBayId(e.target.value)}
+                className="h-8 px-2.5 rounded-md border border-[var(--input-border)] bg-[var(--card-bg)] text-text text-xs"
+              >
+                {bays.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    Bay {b.bay_number}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
               onClick={() => setShowAll((v) => !v)}
@@ -293,37 +342,45 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
 
         {loading && !loadError && <p className="text-sm text-muted">Loading dock board…</p>}
 
-        {!loading && !loadError && (
+        {!loading && !loadError && view === "team" && (
+          <TeamView
+            bays={bays}
+            assignments={assignments}
+            selectedBayId={selectedBayId}
+            onSelectBay={setSelectedBayId}
+            cardHandlers={cardHandlers}
+          />
+        )}
+
+        {!loading && !loadError && view === "overview" && (
           <>
-            {!teamView && (
-              <section
-                className={`space-y-2 rounded-xl p-2 transition-colors ${
-                  draggingId && canManage
-                    ? dragOverTarget === "awaiting"
-                      ? "border-2 border-dashed border-[var(--primary-bg)] bg-[var(--primary-bg)]/5"
-                      : "border-2 border-dashed border-[var(--line)]"
-                    : "border-2 border-transparent"
-                }`}
-                onDragOver={draggingId && canManage ? (e) => handleDragOver("awaiting", e) : undefined}
-                onDragLeave={draggingId && canManage ? () => setDragOverTarget(null) : undefined}
-                onDrop={draggingId && canManage ? (e) => handleDrop("awaiting", e) : undefined}
-              >
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Awaiting trailer assignment
-                </h2>
-                {awaiting.length === 0 ? (
-                  <p className="text-sm text-text-faint italic px-1">Nothing waiting on a bay.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {awaiting.map((a) => (
-                      <div key={a.id} className="w-[230px] max-w-full shrink-0">
-                        {renderCard(a)}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
+            <section
+              className={`space-y-2 rounded-xl p-2 transition-colors ${
+                draggingId && canManage
+                  ? dragOverTarget === "awaiting"
+                    ? "border-2 border-dashed border-[var(--primary-bg)] bg-[var(--primary-bg)]/5"
+                    : "border-2 border-dashed border-[var(--line)]"
+                  : "border-2 border-transparent"
+              }`}
+              onDragOver={draggingId && canManage ? (e) => handleDragOver("awaiting", e) : undefined}
+              onDragLeave={draggingId && canManage ? () => setDragOverTarget(null) : undefined}
+              onDrop={draggingId && canManage ? (e) => handleDrop("awaiting", e) : undefined}
+            >
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Awaiting trailer assignment
+              </h2>
+              {awaiting.length === 0 ? (
+                <p className="text-sm text-text-faint italic px-1">Nothing waiting on a bay.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {awaiting.map((a) => (
+                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                      {renderCard(a)}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
             <section className="space-y-2">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-muted px-2">Bays</h2>
@@ -331,7 +388,7 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
                 <p className="text-sm text-text-faint italic px-3">No bays configured.</p>
               ) : (
                 <div className="overflow-x-auto pb-2 px-2">
-                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3 min-w-0 md:min-w-[1080px]">
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3 min-w-0 md:min-w-[1320px]">
                     {bays.map((bay) => {
                       const bayAssignments = set.filter(
                         (a) => a.bay_id === bay.id && BAY_ACTIVE_STATUSES.includes(a.loading_status)
@@ -371,54 +428,50 @@ export default function DockBoard({ userName, isAdmin, permissions }: DockBoardP
               )}
             </section>
 
-            {!teamView && (
-              <>
-                <section className="space-y-2 px-2">
-                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Yard</h2>
-                  {yard.length === 0 ? (
-                    <p className="text-sm text-text-faint italic px-1">No trailers in the yard.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {yard.map((a) => (
-                        <div key={a.id} className="w-[230px] max-w-full shrink-0">
-                          {renderCard(a)}
-                        </div>
-                      ))}
+            <section className="space-y-2 px-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Yard</h2>
+              {yard.length === 0 ? (
+                <p className="text-sm text-text-faint italic px-1">No trailers in the yard.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {yard.map((a) => (
+                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                      {renderCard(a)}
                     </div>
-                  )}
-                </section>
+                  ))}
+                </div>
+              )}
+            </section>
 
-                <section className="space-y-2 px-2">
-                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">In transit</h2>
-                  {transit.length === 0 ? (
-                    <p className="text-sm text-text-faint italic px-1">Nothing in transit.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {transit.map((a) => (
-                        <div key={a.id} className="w-[230px] max-w-full shrink-0">
-                          {renderCard(a)}
-                        </div>
-                      ))}
+            <section className="space-y-2 px-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">In transit</h2>
+              {transit.length === 0 ? (
+                <p className="text-sm text-text-faint italic px-1">Nothing in transit.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {transit.map((a) => (
+                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                      {renderCard(a)}
                     </div>
-                  )}
-                </section>
+                  ))}
+                </div>
+              )}
+            </section>
 
-                <section className="space-y-2 px-2">
-                  <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Delivered</h2>
-                  {delivered.length === 0 ? (
-                    <p className="text-sm text-text-faint italic px-1">Nothing delivered yet.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {delivered.map((a) => (
-                        <div key={a.id} className="w-[230px] max-w-full shrink-0">
-                          {renderCard(a, { showArchive: true })}
-                        </div>
-                      ))}
+            <section className="space-y-2 px-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Delivered</h2>
+              {delivered.length === 0 ? (
+                <p className="text-sm text-text-faint italic px-1">Nothing delivered yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {delivered.map((a) => (
+                    <div key={a.id} className="w-[230px] max-w-full shrink-0">
+                      {renderCard(a, { showArchive: true })}
                     </div>
-                  )}
-                </section>
-              </>
-            )}
+                  ))}
+                </div>
+              )}
+            </section>
           </>
         )}
       </div>

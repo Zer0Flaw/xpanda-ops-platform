@@ -1836,6 +1836,42 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **PXXX-a — v2 Loading Dashboard: "Loading Team View" rebuilt as a 1:1 clone of legacy
+  (react-component-agent §9b, no API/DB/middleware change).** Unit 3b originally shipped Team
+  View as a boolean flag hiding sections on the same 6-column Overview grid, documented as a
+  deliberate scope cut. That decision is reversed: new `TeamView.tsx` (two-screen stack —
+  bay list + Yard, drill into a bay for Not Started/Loading/Loaded groups) and
+  `BayListItem.tsx` (the bay-list row, 🚛 trailer chip + status border/badge, byte-parity with
+  legacy's `renderBayList` including its emoji — a deliberate, prompt-mandated exception to the
+  platform's no-emoji-icons doctrine since this component's entire purpose is exact legacy
+  parity). `DockAssignmentCard.tsx` lost its reduced `teamView` early-return branch entirely —
+  Team View now renders the same full card as Overview, matching legacy's
+  `renderAssignmentCard(a, false, false)` being the single card renderer for both views — and
+  the full card was bumped to floor-grade sizing (action buttons + trailer input to
+  `min-h-[44px]`, base text bumped off `text-[10px]`/`text-[11px]` to `text-xs`/`text-sm`).
+  `DockBoard.tsx`'s `teamView: boolean` became `view: 'overview' | 'team'` plus a hoisted
+  `selectedBayId` (lifted out of `TeamView.tsx` itself — the toolbar's bay `<select>` and
+  future notification deep-linking both need to drive the same drill-in state from outside the
+  component); the Overview/Team View segmented toggle mirrors legacy's `.ld-view-toggle`
+  pressed-state styling. Default view is responsive (`matchMedia('(max-width: 767px)')`,
+  computed once in a mount-only `useEffect`, never during render, never re-applied after a
+  manual toggle) — matches legacy's `window.innerWidth < 768` default. Switching into Team View
+  via the toolbar toggle always resets to the bay-list screen, matching legacy's
+  `setLdView('bay')` (drill-in is a separate action). Bumped the bay grid's
+  `md:min-w-[1080px]` → `md:min-w-[1320px]` since the floor-grade button/font sizing widened
+  each card past the old column width. **Deliberate one-commit deviation, not a bug**: PXXX-a's
+  own scope doesn't include `sortAssignments.ts` (that's PXXX-b's deliverable), but its own spec
+  text requires Team View's bay groups/Yard list to be sorted — `TeamView.tsx` carries a small
+  local `sortInvAsc` duplicating the eventual shared helper's `inv_asc` algorithm exactly, marked
+  `TODO(PXXX-b)` for removal once the real module lands. Team View intentionally reads the raw
+  `assignments` state, not the This-Week-filtered `set` Overview uses — matches legacy exactly
+  (`renderBayList`/`renderBayView` read unfiltered `allAssignments`; the "This Week" toggle has
+  never affected Team View). `npx tsc --noEmit` + `npm run cf-build` both green;
+  `grep -rn "teamView" cutting-pilot/src` confirmed empty. No BACKLOG item matched "Team View"
+  by name to remove (it was only ever documented as a scope cut in unit 3b's own CHANGELOG entry
+  and `DockBoard.tsx`'s header comment, never tracked as its own bullet) — the standing
+  i18n-follow-up bullet was extended to name the two new files instead of adding a near-duplicate.
+
 - **PXXX-k — Invoice Analytics: browser print + XLSX export (per-invoice/per-month + annual)
   (next-platform-agent §9a + react-component-agent §9b, net-new export lib + toolbar component +
   one net-new read-only route, no DB migration — `annual/route.ts` only reads
