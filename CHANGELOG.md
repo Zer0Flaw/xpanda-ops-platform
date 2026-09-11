@@ -1870,6 +1870,71 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **Feature (unprompted, conversational request, no prompt file, no prompt number yet) —
+  Shipment Dashboard: per-order Distance/ETA field, ORS-cached (next-platform-agent §9a +
+  react-component-agent §9b).** Steve asked for a miles-to-destination + estimated-drive-time
+  field on each `/v2/logistics` shipment row, reusing the ORS integration already built for
+  Invoice Analytics rather than standing up anything new, cached per address so repeat loads
+  don't re-hit the API. Opus design review (via a Plan-agent pass before implementation) caught
+  a real risk in the first draft: resolving mileage inline inside `GET /v2/api/shipments` is
+  unbounded — the dashboard's Calendar view fetches up to 365 days / hundreds of rows in one
+  request, so a cold-cache load there could mean hundreds of sequential ORS calls in one HTTP
+  request (edge-timeout risk) **and** could burn the shared `ORS_API_KEY` quota Invoice
+  Analytics depends on for its own price-per-mile stats, silently degrading a live financial
+  feature for a reason nobody would think to check. Fixed by splitting read from resolve:
+  `GET /v2/api/shipments` (extended) now joins `jobs.ship_to_*`, computes
+  `normalizeAddressKey()` in JS per row, and does one batched `geocode_cache` `IN (...)` lookup
+  — **zero ORS calls**, works the same regardless of date window or view. A new
+  `GET /v2/api/shipments/distances?ids=...` is the only route that talks to ORS; it's called
+  client-side by `ShipmentDashboard.tsx` in a bounded warm-up effect (max 2 sequential batches
+  of 8 ids) gated explicitly on `viewMode === "list"` — Calendar view and List's "Show All"
+  (`days=90`) never trigger it, only ever display whatever's already cached. Kept as **GET**
+  (not POST) since `middleware.ts` maps POST/PUT/DELETE to the `edit` permission and this is
+  read-triggered enrichment that should stay on the existing `logistics.dashboard` **view**
+  grant — no middleware change needed, the existing `{ prefix: "/v2/api/shipments" }` rule
+  already covers the new sub-path by `startsWith`, confirmed by reading `middleware.ts` rather
+  than assumed. New `duration_sec_from_origin REAL` column on `geocode_cache`
+  (`DB_Migrations/geocode_cache-duration.sql`) alongside the existing `miles_from_origin` —
+  stored in seconds (ORS Matrix's native unit; `units` only scales `distances`, never
+  `durations`) so the UI reuses the existing `formatDuration()` helper
+  (`cutting-pilot/src/lib/time.ts`, already used for cutting-session elapsed time) with no
+  conversion. New `drivingMilesAndDuration()` in `ors.ts` (requests
+  `metrics: ["distance","duration"]`); existing `drivingMiles()` refactored to call it and
+  return just `.miles` — behavior-preserving for `routePathMiles` and both invoice routes,
+  which only ever consumed the miles value. `distances/route.ts`'s `resolveOrigin`/
+  `resolveDestRoute` are a deliberate **third** self-contained copy of the cache read/write
+  pattern already duplicated between `invoice/route.ts` and `invoice/resolve-line/route.ts`
+  (explicit precedent in the latter's own comment: keeps each route's only failure mode
+  self-contained, never risks the live invoice-ingest path) — a variant, not an identical
+  copy: it resolves duration alongside miles via a 3-tier design (full cache hit → 0 calls;
+  cached lat/lng but missing duration, e.g. every pre-existing Invoice-Analytics-written row
+  right after the migration → 1 matrix call reusing the cached coordinates, writing both
+  columns together so they're never a mismatched pair; no cache row → geocode + matrix, full
+  insert), plus a 24h negative-cache backoff so a `geocode_failed`/`route_failed` address isn't
+  re-hit by ORS on every dashboard load. `driving-car` duration is a free-flow car ETA with no
+  traffic — UI shows it as secondary/muted text with a tooltip ("car profile, no traffic"),
+  deliberately not switched to `driving-hgv` (would desync duration from the `miles_from_origin`
+  value Invoice Analytics already cached under the same car-profile address key); a truck-profile
+  lane is logged to `BACKLOG.md` instead. Destination source is `jobs.ship_to_street/city/
+  state/zip` only (the same fields Invoice Analytics geocodes, so this feature inherits its
+  already-warm cache rows for free) — the legacy free-text `shipments.destination` column is
+  deliberately not used as a geocode source; a null `job_id` or blank ship-to degrades to "—"
+  (`distance_status: "unavailable"`), consistent with Invoice Analytics' existing "mileage
+  unavailable" pattern. New column added to `ShipmentDashboard.tsx`'s list table (between
+  Method/Carrier and Trailer) via `ShipmentRow.tsx`'s new `DistanceEta` component, plus a
+  matching label:value row in `ShipmentCalendar.tsx`'s existing shipment-detail side panel
+  (cache-read only, no fetch triggered from Calendar). `ShipmentListItem`
+  (`components/logistics/types.ts`) extended with `ship_to_city/state/zip`,
+  `miles_from_origin`, `duration_sec`, `distance_status`. Migration run directly against prod
+  D1 via `wrangler d1 execute DB --remote` (Steve authorized this session, confirmed column
+  exists via `PRAGMA table_info`) — commit/push held until the migration was live, per the
+  migration-before-push hard rule overriding the session's blanket "commit and push"
+  instruction; pushed once confirmed. `npx tsc --noEmit` + `npm run cf-build` both green. No
+  live browser/`wrangler dev --remote` smoke test in this sandbox (same known D1-under-`next
+  dev` limitation as prior v2-logistics work) — compilation-only confirmation, flagged to
+  Steve. `BACKLOG.md` gets three new deferred items: extract the now-3x-duplicated
+  geocode-cache orchestration if a 4th consumer appears, a `driving-hgv` truck-profile lane,
+  and an optional Calendar-view warm pass if Steve wants ETAs to populate there too.
 - **Hotfix (unprompted, conversational request, no prompt file) — BOL editor: page order + two
   edit-persistence bugs, v2 engine (react-component-agent §9b; bilateral with the legacy fix
   above, same session).** Same three fixes as the legacy entry above, ported to

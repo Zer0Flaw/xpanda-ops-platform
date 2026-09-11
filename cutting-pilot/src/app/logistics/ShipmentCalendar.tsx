@@ -6,6 +6,7 @@
 // and direct Generate/View BOL action triggers.
 import { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, FileText, Eye } from "lucide-react";
+import { formatDuration } from "@/lib/time";
 import type { ShipmentListItem } from "@/components/logistics/types";
 
 interface ShipmentCalendarProps {
@@ -291,6 +292,19 @@ export default function ShipmentCalendar({
               <div>
                 <span className="text-muted block">Total BDFT</span>
                 <span className="font-medium text-text tabular-nums">{selectedShipment.total_bdft || "—"}</span>
+              </div>
+              <div>
+                <span className="text-muted block">Distance / ETA</span>
+                <span
+                  className="font-medium text-text tabular-nums"
+                  title="Est. driving distance/time from the Orlando plant · car profile, no traffic"
+                >
+                  {selectedShipment.distance_status === "ok" && selectedShipment.miles_from_origin != null
+                    ? `${Math.round(selectedShipment.miles_from_origin).toLocaleString("en-US")} mi${
+                        selectedShipment.duration_sec != null ? ` · ${formatDuration(selectedShipment.duration_sec)}` : ""
+                      }`
+                    : "—"}
+                </span>
               </div>
             </div>
 

@@ -23,6 +23,15 @@ export interface ShipmentListItem {
   bol_count: number;
   status: string;
   ship_date: string | null;
+  ship_to_city: string | null;
+  ship_to_state: string | null;
+  ship_to_zip: string | null;
+  // Distance/ETA from the fixed facility origin, cache-only from GET /v2/api/shipments --
+  // "pending" means no cache row yet (warmed client-side, list view only, see
+  // ShipmentDashboard.tsx); "unavailable" means no job/ship-to address to resolve.
+  miles_from_origin: number | null;
+  duration_sec: number | null;
+  distance_status: "ok" | "pending" | "unavailable";
 }
 
 export interface JobLineItem {

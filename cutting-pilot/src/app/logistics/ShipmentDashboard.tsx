@@ -8,7 +8,7 @@
 // - Instant client-side search across customer, invoice, trailer, carrier, BOL
 // - Daily grouping of shipments with day headers, piece/bdft sums, and status badges
 // - Alternating Generate BOL ↔ View BOL actions with live refresh on generation
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import {
   Search,
   X,
@@ -160,6 +160,53 @@ export default function ShipmentDashboard({
   useEffect(() => {
     load();
   }, [load]);
+
+  // Bounded distance/ETA cache warm-up -- list view ONLY, never Calendar (whose 365-day fetch
+  // can hold hundreds of rows -- warming that inline would risk an ORS quota burn that degrades
+  // Invoice Analytics' own mileage stats). Caps at 2 sequential batches of 8 ids per mount/load
+  // and never re-attempts an id already tried this session (warmAttemptedRef), so re-renders
+  // triggered by this effect's own setRows merge don't loop.
+  const warmAttemptedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (viewMode !== "list" || !rows || !rows.length) return;
+
+    const pendingIds = rows
+      .filter((r) => r.distance_status === "pending" && !warmAttemptedRef.current.has(r.id))
+      .map((r) => r.id);
+    if (!pendingIds.length) return;
+
+    const idsToWarm = pendingIds.slice(0, 16); // 2 server batches of MAX_IDS_PER_CALL (8)
+    idsToWarm.forEach((id) => warmAttemptedRef.current.add(id));
+
+    let cancelled = false;
+    (async () => {
+      for (let i = 0; i < idsToWarm.length; i += 8) {
+        if (cancelled) return;
+        const batch = idsToWarm.slice(i, i + 8);
+        try {
+          const res = await fetch(`/v2/api/shipments/distances?ids=${batch.join(",")}`);
+          const json = await res.json();
+          if (cancelled || !res.ok || !json.ok) continue;
+          setRows((prev) =>
+            prev
+              ? prev.map((r) => {
+                  const d = json.results?.[r.id];
+                  return d
+                    ? { ...r, miles_from_origin: d.miles, duration_sec: d.durationSec, distance_status: d.status }
+                    : r;
+                })
+              : prev
+          );
+        } catch {
+          // best-effort warm -- id stays marked attempted for this session, ok to leave "pending"
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, rows]);
 
   function handleEditFromViewer(bols: BolRecord[], jobId: string, index: number) {
     setViewerJobId(null);
@@ -576,6 +623,7 @@ export default function ShipmentDashboard({
                             <th className="px-3.5 py-2.5">Customer</th>
                             <th className="px-3.5 py-2.5">Ship date</th>
                             <th className="px-3.5 py-2.5">Method / Carrier</th>
+                            <th className="px-3.5 py-2.5">Distance / ETA</th>
                             <th className="px-3.5 py-2.5">Trailer</th>
                             <th className="px-3.5 py-2.5">BDFT</th>
                             <th className="px-3.5 py-2.5">BOL #</th>

@@ -3,6 +3,7 @@
 // ShipmentDashboard owns data + refetch, BolActions owns the Build Load / Generate-View BOL
 // buttons (kept separate so it can also be reused wherever else BOL actions get surfaced).
 import BolActions from "./BolActions";
+import { formatDuration } from "@/lib/time";
 import type { ShipmentListItem } from "./types";
 
 const badgeBase = "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap";
@@ -39,6 +40,27 @@ function fmtNum(n: number | string | null): string {
   return v.toLocaleString("en-US", { maximumFractionDigits: 1 });
 }
 
+// driving-car is a free-flow, no-traffic car ETA -- labeled as such via title tooltip so it's
+// never mistaken for a truck-accurate delivery estimate.
+function DistanceEta({ shipment: s }: { shipment: ShipmentListItem }) {
+  if (s.distance_status === "unavailable") {
+    return <span className="text-sm text-muted">—</span>;
+  }
+  if (s.distance_status === "pending" || s.miles_from_origin == null) {
+    return <span className="text-sm text-muted">…</span>;
+  }
+  return (
+    <div title="Est. driving distance/time from the Orlando plant · car profile, no traffic">
+      <div className="text-sm font-mono tabular-nums font-semibold text-text">
+        {Math.round(s.miles_from_origin).toLocaleString("en-US")} mi
+      </div>
+      {s.duration_sec != null && (
+        <div className="text-xs text-muted">{formatDuration(s.duration_sec)}</div>
+      )}
+    </div>
+  );
+}
+
 interface ShipmentRowProps {
   shipment: ShipmentListItem;
   onViewBol: (jobId: string) => void;
@@ -73,6 +95,9 @@ export default function ShipmentRow({ shipment: s, onViewBol, onGenerateBol }: S
       </td>
       <td className="px-3 py-2 align-top text-sm text-text">{fmtDate(s.ship_date)}</td>
       <td className="px-3 py-2 align-top text-sm text-text">{methodCarrier}</td>
+      <td className="px-3 py-2 align-top">
+        <DistanceEta shipment={s} />
+      </td>
       <td className="px-3 py-2 align-top text-sm font-mono tabular-nums text-text">{s.trailer_number || "—"}</td>
       <td className="px-3 py-2 align-top text-sm font-mono tabular-nums text-text">{fmtNum(s.total_bdft)}</td>
       <td className="px-3 py-2 align-top text-sm font-mono tabular-nums text-text">{s.bol_number || "—"}</td>

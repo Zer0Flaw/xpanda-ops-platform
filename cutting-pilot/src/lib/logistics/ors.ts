@@ -36,9 +36,21 @@ export async function geocode(address: string, apiKey: string): Promise<GeoPoint
   }
 }
 
-// Matrix (driving-car), one source -> one destination, distance in miles. Returns null on
-// error / missing key (caller marks route_failed).
-export async function drivingMiles(origin: GeoPoint, dest: GeoPoint, apiKey: string): Promise<number | null> {
+export interface DrivingResult {
+  miles: number;
+  durationSec: number;
+}
+
+// Matrix (driving-car), one source -> one destination, distance (mi) + duration (sec).
+// `units` only scales the distances array -- durations are always returned in seconds,
+// regardless of units. Duration is a free-flow car-profile ETA (no traffic) -- callers
+// displaying it to freight/trailer users should label it as such, not as a truck ETA.
+// Returns null on error / missing key (caller marks route_failed).
+export async function drivingMilesAndDuration(
+  origin: GeoPoint,
+  dest: GeoPoint,
+  apiKey: string
+): Promise<DrivingResult | null> {
   if (!apiKey) return null;
   try {
     const res = await fetch("https://api.openrouteservice.org/v2/matrix/driving-car", {
@@ -51,17 +63,27 @@ export async function drivingMiles(origin: GeoPoint, dest: GeoPoint, apiKey: str
         ],
         sources: [0],
         destinations: [1],
-        metrics: ["distance"],
+        metrics: ["distance", "duration"],
         units: "mi",
       }),
     });
     if (!res.ok) return null;
     const body: any = await res.json();
     const miles = body?.distances?.[0]?.[0];
-    return typeof miles === "number" ? miles : null;
+    const durationSec = body?.durations?.[0]?.[0];
+    if (typeof miles !== "number" || typeof durationSec !== "number") return null;
+    return { miles, durationSec };
   } catch {
     return null;
   }
+}
+
+// Distance-only convenience wrapper -- kept for the existing callers (routePathMiles,
+// both invoice routes) that only ever consumed the miles value. Behavior-preserving:
+// requesting the extra "duration" metric doesn't change the distances array ORS returns.
+export async function drivingMiles(origin: GeoPoint, dest: GeoPoint, apiKey: string): Promise<number | null> {
+  const r = await drivingMilesAndDuration(origin, dest, apiKey);
+  return r?.miles ?? null;
 }
 
 // Total distance in miles for an ordered path of >=2 points, computed by summing sequential

@@ -7,8 +7,79 @@
 // scope for this unit) and, unlike legacy, orders soonest-ship-date-first: this is a live ops
 // queue of what ships next, not an admin log.
 // Gated on `logistics.dashboard` by middleware (GET view) -- same key as legacy's /api/shipments.
+//
+// Distance/ETA enrichment (miles + drive time to each ship-to address) is CACHE-ONLY here --
+// this route makes zero ORS calls, on purpose. Callers can request any date window (Calendar
+// view fetches up to 365 days), so resolving mileage inline would be unbounded -- hundreds of
+// sequential ORS calls in one request risks an edge timeout AND could burn the ORS_API_KEY
+// quota that Invoice Analytics depends on for its own (financial) mileage stats, degrading a
+// live feature for a reason nobody would think to check. Warming the cache for cold addresses
+// is the separate, bounded GET /v2/api/shipments/distances route, called client-side only from
+// the dashboard's default List + This-Week view (see ShipmentDashboard.tsx).
 import { NextResponse, type NextRequest } from "next/server";
+import type { D1Database } from "@cloudflare/workers-types";
 import { getEnv } from "@/lib/db";
+import { normalizeAddressKey } from "@/lib/logistics/freightInvoice";
+
+interface CacheRow {
+  address_key: string;
+  miles_from_origin: number | null;
+  duration_sec_from_origin: number | null;
+  status: string;
+}
+
+// Batched, cache-only distance/ETA lookup for a set of already-loaded shipment rows. Computes
+// the address key in JS (never in SQL -- normalizeAddressKey's whitespace-collapse/punctuation
+// strip can't be reproduced as a SQL expression without risking a key mismatch, which would be
+// a silent 100% cache miss) and does one chunked `IN (...)` query. Never writes to the cache.
+async function attachDistanceEta(DB: D1Database, rows: any[]): Promise<void> {
+  const keyByRowIndex = new Map<number, string>();
+  rows.forEach((row, i) => {
+    const zip = (row.ship_to_zip || "").trim();
+    if (!row.job_id || !zip) return;
+    keyByRowIndex.set(
+      i,
+      normalizeAddressKey(row.ship_to_street || "", row.ship_to_city || "", row.ship_to_state || "", zip)
+    );
+  });
+
+  const uniqueKeys = Array.from(new Set(keyByRowIndex.values()));
+  const cacheByKey = new Map<string, CacheRow>();
+
+  const CHUNK = 100; // stay under D1's bind-parameter limit
+  for (let i = 0; i < uniqueKeys.length; i += CHUNK) {
+    const chunk = uniqueKeys.slice(i, i + CHUNK);
+    if (!chunk.length) continue;
+    const placeholders = chunk.map(() => "?").join(",");
+    const res = await DB.prepare(
+      `SELECT address_key, miles_from_origin, duration_sec_from_origin, status
+       FROM geocode_cache WHERE address_key IN (${placeholders})`
+    )
+      .bind(...chunk)
+      .all<CacheRow>();
+    for (const r of res.results ?? []) cacheByKey.set(r.address_key, r);
+  }
+
+  rows.forEach((row, i) => {
+    const key = keyByRowIndex.get(i);
+    const cached = key ? cacheByKey.get(key) : undefined;
+    if (!key) {
+      row.miles_from_origin = null;
+      row.duration_sec = null;
+      row.distance_status = "unavailable";
+    } else if (cached && cached.status === "ok" && cached.miles_from_origin != null) {
+      row.miles_from_origin = cached.miles_from_origin;
+      row.duration_sec = cached.duration_sec_from_origin;
+      row.distance_status = "ok";
+    } else {
+      row.miles_from_origin = null;
+      row.duration_sec = null;
+      row.distance_status = "pending";
+    }
+    // Trim the raw street off the response -- only needed server-side to build the key.
+    delete row.ship_to_street;
+  });
+}
 
 export async function GET(request: NextRequest) {
   const { DB } = await getEnv();
@@ -70,6 +141,7 @@ export async function GET(request: NextRequest) {
     const [listResult, statsResult] = await Promise.all([
       DB.prepare(
         `SELECT shipments.*, j.invoice_number,
+                j.ship_to_street, j.ship_to_city, j.ship_to_state, j.ship_to_zip,
                 (SELECT COUNT(*) FROM bols b WHERE b.job_id = shipments.job_id) AS bol_count
            FROM shipments
            LEFT JOIN jobs j ON j.id = shipments.job_id
@@ -87,9 +159,12 @@ export async function GET(request: NextRequest) {
       ).bind(curMonStr, curMonStr).first(),
     ]);
 
+    const rows = (listResult.results ?? []) as any[];
+    await attachDistanceEta(DB, rows);
+
     return NextResponse.json({
       ok: true,
-      data: listResult.results ?? [],
+      data: rows,
       stats: {
         outboundThisWeek: (statsResult as any)?.outbound_this_week ?? 0,
         pendingOutbound: (statsResult as any)?.pending_outbound ?? 0,

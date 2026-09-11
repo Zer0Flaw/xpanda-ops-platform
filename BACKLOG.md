@@ -212,6 +212,21 @@
 
 ## Logistics (v2)
 
+- [ ] **Shipment Dashboard Distance/ETA — extract shared geocode-cache orchestration if a 4th
+  consumer appears.** `resolveOrigin`/`resolveDestRoute`-style cache read/write logic is now
+  duplicated three times (`invoice/route.ts`, `invoice/resolve-line/route.ts`,
+  `shipments/distances/route.ts`), each a deliberate self-contained copy to avoid risking the
+  live invoice-ingest path. Fine at 3; revisit if a 4th consumer needs the same pattern.
+- [ ] **Shipment Dashboard Distance/ETA — `driving-hgv` truck-profile lane.** Today's
+  miles/duration use ORS's `driving-car` profile (free-flow, no traffic) for both Invoice
+  Analytics and the Distance/ETA field, labeled accordingly in the UI. A truck-accurate
+  profile would need its own cache columns/keys (can't reuse `miles_from_origin`/
+  `duration_sec_from_origin`, which are car-profile) — deferred until Steve wants it.
+- [ ] **Shipment Dashboard Distance/ETA — optional Calendar-view warm pass.** Calendar view
+  and List's "Show All" deliberately never trigger ORS resolution (cache-only display) to
+  avoid an unbounded cold-cache loop; they'll only show real values once the default List +
+  This-Week view has warmed those addresses. Revisit if Steve wants Calendar to populate
+  independently (would need its own bounded/paginated warm strategy, not a blanket unlock).
 - [x] P435 — unit 1: BOL core port (`logistics/bol-shared.js` → `cutting-pilot/src/lib/bolShared.ts`) + structural self-check + visual parity harness. Isolated `v2-logistics` worktree/branch, not merged/deployed. See `CHANGELOG.md` for full detail.
 - [x] PXXX (Steve to assign) — unit 2: shipment dashboard port (`/v2/logistics`) + `bol-compose`/`bol-editor` rebuilt as real React components (`BolViewerModal`/`BolGenerateModal`/`BolEditorModal`), both dashboard bugs fixed structurally (live trailer enrichment, always-refetch after generate). Isolated `v2-logistics` worktree/branch, not merged/deployed; write routes authored but fenced (`V2_LOGISTICS_WRITES_ENABLED = false`). See `CHANGELOG.md` for full detail.
 - [x] PXXX (Steve to assign) — unit 3a: preview D1 + R2 bootstrap (dev write-safety) — `wrangler.toml` preview bindings, scratch schema/seed scripts, dev-auth cookie doc. See `CHANGELOG.md` for full detail.
