@@ -1003,6 +1003,40 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Schedule Board (v2)
 
+- **Conversational request (unprompted) — week-totals bar + scroll-wrap marker on both TV and desk
+  boards (react-component-agent §9b).** Steve asked for two UI/UX additions on the same week-label
+  bar shared by both boards (`WeekBand.tsx`, used by `ScheduleBoard.tsx` and
+  `InteractiveScheduleBoard.tsx` alike): (1) total BDFT and total chunks-required for the week, and
+  (2) a marker inside a scrolling day column so a viewer glancing at the crawl can tell when the
+  list wraps back to the top. **Total BDFT**: sums each row's `total_bdft` (sheet column H) across
+  every day in the week — asked initially whether to instead read a specific sheet cell (Cell C1)
+  per ship-week tab, but Steve chose the row-sum approach (no ingest/schema change, ships
+  immediately). **Total chunks**: `advisor()` caught that a naive per-row sum double-counts —
+  `chunks_required` is job-level (`schedule-board/route.ts`'s `fetchChunksByJob` keys by
+  `job_id`), and a job routinely splits its invoice across multiple delivery days within one week
+  (documented live in `schedule-ingest.ts`'s `matchAndUpsert` comment), so every row for that job
+  carries the same number. `weekTotals()` in `WeekBand.tsx` now dedupes chunks by `job_id` before
+  summing; BDFT summing is unaffected (it's genuinely per sheet row, continuation rows already
+  come through `null` via `numOrNull`'s `^^^` guard). **Scroll-wrap marker**: new
+  `ScrollWrapMarker.tsx`, rendered only inside an actually-overflowing column — `AutoScrollColumn`
+  (TV) places it inside both the measured and duplicate copies so it's part of the seamless-loop
+  height calculation; `InteractiveScrollColumn` (desk) gained its own overflow-detection
+  (`ResizeObserver` on a new inner `contentRef`, mirroring `AutoScrollColumn`'s existing
+  viewport+content pattern) since it previously had no overflow state to key off of. Wording
+  ("↻ List restarts from the top") deliberately holds in both scroll shapes — true the instant
+  you cross it on the TV's seamless duplicate, true after the bottom dwell on desk's single-copy
+  reset. Week-bar text bumped from a fixed `10px` to the same `clamp(0.625rem,0.85vh,0.75rem)`
+  vh-based sizing `DayColumn`'s day headers already use, for wall-TV legibility. **Not verified in
+  a browser** — `/v2/schedule` is D1-backed and this sandbox's bare `next dev` hangs on `getEnv()`
+  (documented limitation from prior sessions); `npx tsc --noEmit` + `npm run cf-build` both green,
+  confirms compilation only, not that the bar/marker render or read correctly on a real screen.
+  `/v2/schedule` is already live on the floor TV, so this lands there the moment it's pushed —
+  worth a floor check before or shortly after. No DB migration, no v2-cutover change (both routes
+  already wired into nav). Not assigned a prompt number per Steve's standing instruction for
+  conversational requests without a prompt file. `BACKLOG.md`'s existing "P263 follow-up — per-day
+  totals on the schedule board (load count / bdft sum per `DayColumn`)" item is adjacent but
+  distinct (day-level, includes load count) — left open, not closed by this week-level pass.
+
 - **P427 — dedicated `schedule.desk` permission gating `/v2/schedule/desk`, dual links on the home
   schedule card (next-platform-agent §9a + admin-auth-agent).** Both v2 schedule views (`/v2/schedule`
   TV, `/v2/schedule/desk`) were gated on the single `schedule` key, so the home page couldn't route

@@ -5,6 +5,7 @@
 // shown in turn — without shrinking rows or shedding fields. If they fit, renders them statically
 // with no motion. Replaces the retired shrink-to-fit density tiering (density.ts).
 import { useLayoutEffect, useRef, useState } from "react";
+import ScrollWrapMarker from "./ScrollWrapMarker";
 
 // Steve-locked crawl rate (P423, from wall testing): slow enough to read a row as it passes.
 export const SCHEDULE_SCROLL_PX_PER_SEC = 10;
@@ -56,8 +57,14 @@ export default function AutoScrollColumn({ children }: AutoScrollColumnProps) {
             } as React.CSSProperties
           }
         >
-          <div ref={measureRef}>{children}</div>
-          <div aria-hidden="true">{children}</div>
+          <div ref={measureRef}>
+            {children}
+            <ScrollWrapMarker />
+          </div>
+          <div aria-hidden="true">
+            {children}
+            <ScrollWrapMarker />
+          </div>
         </div>
       ) : (
         <div ref={measureRef}>{children}</div>

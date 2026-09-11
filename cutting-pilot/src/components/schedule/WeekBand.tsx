@@ -24,6 +24,30 @@ function columnDate(weekMonday: Date | null, dayIndex: number): string | null {
   return `${y}-${m}-${day}`;
 }
 
+// Week totals derived straight from the rows already on the board — no separate endpoint or
+// sheet cell read, so this stays in lockstep with whatever the board itself is showing.
+// total_bdft IS per sheet row (column H; a continuation row like "^^^" comes through null via
+// numOrNull, contributing 0), so summing every row is correct. chunks_required is NOT per row —
+// schedule-board/route.ts's fetchChunksByJob keys it by job_id and every row matching that job
+// gets the same number back. A job routinely splits its invoice across multiple delivery days
+// within one week (documented live in schedule-ingest.ts's matchAndUpsert comment), so summing
+// every row would double/triple-count that job's chunks; dedupe by job_id instead.
+function weekTotals(days: ScheduleDayGroup[]): { bdft: number; chunks: number } {
+  let bdft = 0;
+  let chunks = 0;
+  const chunkedJobIds = new Set<string>();
+  for (const day of days) {
+    for (const row of day.rows) {
+      if (row.total_bdft != null) bdft += row.total_bdft;
+      if (row.chunks_required != null && row.job_id && !chunkedJobIds.has(row.job_id)) {
+        chunkedJobIds.add(row.job_id);
+        chunks += row.chunks_required;
+      }
+    }
+  }
+  return { bdft, chunks };
+}
+
 interface WeekBandProps {
   weekLabel: string;
   weekTab: string | undefined;
@@ -36,11 +60,16 @@ interface WeekBandProps {
 export default function WeekBand({ weekLabel, weekTab, days, birthdays, interactive, onSelectOrder }: WeekBandProps) {
   const byDay = new Map(days.map((d) => [d.day_of_week, d]));
   const weekMonday = parseWeekMonday(weekTab);
+  const { bdft, chunks } = weekTotals(days);
 
   return (
     <section className="flex-1 min-h-0 flex flex-col">
-      <h2 className="shrink-0 px-2 py-0.5 border-b border-[var(--line)] bg-[var(--surface-2)] text-[10px] font-semibold uppercase tracking-wide text-muted">
-        {weekLabel}
+      <h2 className="shrink-0 flex items-center justify-between gap-2 px-2 py-0.5 border-b border-[var(--line)] bg-[var(--surface-2)] text-[clamp(0.625rem,0.85vh,0.75rem)] font-semibold uppercase tracking-wide text-muted">
+        <span>{weekLabel}</span>
+        <span className="flex items-center gap-2 font-mono tabular-nums normal-case">
+          <span title="Total board feet this week">{Math.round(bdft).toLocaleString()} bdft</span>
+          <span title="Total holey-board chunks required this week">{chunks.toLocaleString()} chunks</span>
+        </span>
       </h2>
       <div className="flex-1 min-h-0 grid grid-cols-1 sm:grid-cols-5 gap-px bg-[var(--line)]">
         {DAY_ORDER.map((day, dayIndex) => {

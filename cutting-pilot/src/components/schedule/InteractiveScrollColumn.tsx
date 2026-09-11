@@ -6,16 +6,34 @@
 //    or click a row without it moving.
 // Single content copy (no seamless duplicate) so the scrollbar thumb reflects the real position; on
 // reaching the bottom it dwells briefly, then resets to the top.
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SCHEDULE_SCROLL_PX_PER_SEC } from "./AutoScrollColumn";
+import ScrollWrapMarker from "./ScrollWrapMarker";
 
 const BOTTOM_DWELL_MS = 1500;
 
 export default function InteractiveScrollColumn({ children }: { children: React.ReactNode }) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const pausedRef = useRef(false);
   const posRef = useRef(0);
   const dwellUntilRef = useRef(0);
+  const [overflowing, setOverflowing] = useState(false);
+
+  // Re-measure on children change (60s poll swaps data) and on any resize of either the
+  // viewport (band height) or the content (rows added/removed) — same two-node approach as
+  // AutoScrollColumn, so ScrollWrapMarker only appears once this column is actually overflowing.
+  useLayoutEffect(() => {
+    const vp = viewportRef.current;
+    const content = contentRef.current;
+    if (!vp || !content) return;
+    const recompute = () => setOverflowing(content.scrollHeight > vp.clientHeight + 1);
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(vp);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [children]);
 
   useEffect(() => {
     const vp = viewportRef.current;
@@ -53,7 +71,10 @@ export default function InteractiveScrollColumn({ children }: { children: React.
       onMouseEnter={() => { pausedRef.current = true; }}
       onMouseLeave={() => { pausedRef.current = false; }}
     >
-      {children}
+      <div ref={contentRef}>
+        {children}
+        {overflowing && <ScrollWrapMarker />}
+      </div>
     </div>
   );
 }
