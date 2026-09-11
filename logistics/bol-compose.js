@@ -649,12 +649,12 @@ function h(tag, attrs = {}, ...children) {
     }
   }
 
-  // ONE combined PDF with all three copies per BOL — original, driver, customer — then the packing
+  // ONE combined PDF with all three copies per BOL — driver, customer, original — then the packing
   // slip once. Single source of truth so bol-generator and load-builder produce identical output.
   async function generateCombinedCopies(records, append, hideQr) {
     const { PDFDocument } = PDFLib;
     const out = await PDFDocument.create();
-    for (const copyType of [undefined, 'driver', 'customer']) {
+    for (const copyType of BolShared.COPY_ORDER) {
       const r = await BolShared.generatePdf(records, { previewOnly: true, copyType, hideQr: !!hideQr });
       try { URL.revokeObjectURL(r.blobUrl); } catch (_e) {}
       const src = await PDFDocument.load(r.pdfBytes);
@@ -698,9 +698,9 @@ function h(tag, attrs = {}, ...children) {
     approveBtn.parentNode.replaceChild(newApprove, approveBtn);
     newApprove.addEventListener('click', async () => {
       for (const bol of lbReviewBols) {
-        if (bol._overrides) {
+        if (bol._touched) {
           try {
-            await api.put(`/api/bols/${bol.id}`, { ...bol, render_overrides: bol._overrides });
+            await api.put(`/api/bols/${bol.id}`, { ...bol, render_overrides: bol._overrides || null });
           } catch (e) { console.error('Failed to save overrides for BOL', bol.id, e); }
         }
       }
@@ -746,7 +746,14 @@ function h(tag, attrs = {}, ...children) {
   }
 
   async function editorOnApply(updatedBol) {
+    updatedBol._touched = true;
     lbReviewBols[lbReviewActiveIndex] = updatedBol;
+
+    // Auto-advance to the next not-yet-edited BOL in the batch, if any, so the
+    // NEXT "Make Changes" click lands there instead of reopening this same one.
+    const nextIndex = lbReviewBols.findIndex(b => !b._touched);
+    if (nextIndex !== -1) lbReviewActiveIndex = nextIndex;
+
     const editorHost = document.getElementById('bol-review-editor-host-lb');
     const iframe     = document.getElementById('bol-review-iframe');
     try {
@@ -781,7 +788,7 @@ function h(tag, attrs = {}, ...children) {
       const opt = document.createElement('option');
       opt.value = String(i);
       const label = b.ship_to_company || b.bol_number || `BOL ${i + 1}`;
-      opt.textContent = `BOL ${i + 1} of ${lbReviewBols.length} — ${label}`;
+      opt.textContent = `BOL ${i + 1} of ${lbReviewBols.length} — ${label}${b._touched ? ' ✓' : ''}`;
       sel.appendChild(opt);
     });
     sel.value = String(lbReviewActiveIndex);

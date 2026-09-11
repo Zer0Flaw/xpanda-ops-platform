@@ -1008,10 +1008,10 @@ async function viewBolForJob(jobId) {
     document.getElementById('log-bol-edit-mount').innerHTML = '';
     document.getElementById('log-bol-view-iframe').style.display = '';
 
-    // Render the same combined output as Generate: original → driver → customer.
+    // Render the same combined output as Generate: driver → customer → original.
     const { PDFDocument } = PDFLib;
     const out = await PDFDocument.create();
-    for (const copyType of [undefined, 'driver', 'customer']) {
+    for (const copyType of BolShared.COPY_ORDER) {
       const r = await BolShared.generatePdf(bolsToRender, { previewOnly: true, copyType });
       try { URL.revokeObjectURL(r.blobUrl); } catch (e) {}
       const src = await PDFDocument.load(r.pdfBytes);

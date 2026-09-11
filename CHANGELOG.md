@@ -1870,6 +1870,32 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics (v2)
 
+- **Hotfix (unprompted, conversational request, no prompt file) — BOL editor: page order + two
+  edit-persistence bugs, v2 engine (react-component-agent §9b; bilateral with the legacy fix
+  above, same session).** Same three fixes as the legacy entry above, ported to
+  `cutting-pilot/src/lib/bolDomGlue.ts`/`bolEditorEngine.ts`/
+  `src/components/logistics/BolEditorModal.tsx`. **(1) Page order**: `buildCombinedBolPdf`'s
+  copy-type loop reordered `[undefined, driver, customer]` → `[driver, customer, undefined]`
+  (only one call site in v2, no shared-constant extraction needed). **(2) Edit-revert**: identical
+  `deriveBaseValue()` fix ported into `bolEditorEngine.ts`'s Apply handler, same diff-against-base
+  (not merge) approach, same ship-to line-count normalization applied symmetrically. Deliberately
+  did **not** add a server-side merge to `PUT /v2/api/bols/:id` — once the client sends a
+  correctly-diffed complete `render_overrides`, a server-side merge would reintroduce the bug by
+  being unable to tell "client omitted this key on purpose" from "client never touched it."
+  **(3) Multi-load session**: `BolEditorModal.tsx`'s per-job multi-load picker had two compounding
+  issues — switching loads silently wiped any unapplied edits with no warning (the mount effect's
+  cleanup tears down the DOM), and a single successful Apply unconditionally closed the whole
+  editing session via the parent's `onSaved()`. Fixed with a local `localBols`/`savedIndices`
+  shadow of the `target.bols` prop (reset only when `target` itself changes, never on
+  picker-driven `activeIndex` changes), auto-advance to the next unsaved load after each
+  successful Apply, `onSaved()` deferred until every load in the batch is saved, and a
+  `window.confirm` guard on the picker if the current load hasn't been Applied since it mounted.
+  `ShipmentDashboard.tsx` needed no changes — its existing `handleEditorSaved` now simply fires
+  later, at true batch completion. This bug is currently latent — v2 BOL writes are still
+  hard-fenced (`V2_LOGISTICS_WRITES_ENABLED = false`, 501) — but is now correct for when that flag
+  flips; not reachable end-to-end this session, verified by tracing all three fixes' repro
+  scenarios by hand against the edited code instead. `npx tsc --noEmit` and `npm run cf-build`
+  both green. No DB migration, no API contract change, `V2_LOGISTICS_WRITES_ENABLED` untouched.
 - **Hotfix (unprompted, conversational request, no prompt file) — Invoice Analytics: "Resolve
   unmatched" popup lets Steve manually complete a line the auto-resolver couldn't match (react-
   component-agent §9b + next-platform-agent §9a; no DB migration).** Steve reported 3 orders
@@ -3042,6 +3068,39 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Logistics
 
+- **Hotfix (unprompted, conversational request, no prompt file) — BOL generator: page order +
+  two edit-persistence bugs, legacy engine (logistics-agent; bilateral with the v2 fix below).**
+  Steve reported three issues on the legacy BOL generator (`logistics/index.html` +
+  `logistics/load-builder.html`, both driven by the shared `bol-compose.js`/`bol-editor.js`/
+  `bol-shared.js` engine). **(1) Page order**: combined BOL PDFs generated
+  `[original, driver, customer]`; Steve wants `Driver, Customer, then any remaining copy`. Added a
+  new `COPY_ORDER` export to `bol-shared.js` (the module's existing single source of truth for
+  rendering constants) and pointed both `bol-compose.js`'s `generateCombinedCopies` and
+  `index.html`'s `viewBolForJob` (previously two independently-duplicated array literals) at it,
+  closing the drift risk between the two call sites. For a multi-load batch, ordering is
+  copy-type-major (all Driver pages, then all Customer, then all remaining) per Steve's
+  confirmation, not grouped per load. **(2) Edits reverted to original on next edit**: root cause
+  was `bol-editor.js`'s Apply handler diffing the on-screen value against `initialValues[k]`,
+  which already reflected any existing saved override — so a field left untouched in a later edit
+  session (because it already showed its previously-saved value) was silently excluded from the
+  new `_overrides` object, which then wholesale-replaced the old one, dropping that field's saved
+  edit. Fixed by adding `deriveBaseValue()` (diffs against the true pristine base column instead
+  of `initialValues`) — not a merge, since a merge can never let an operator un-set a field back to
+  default. **(3) Editing multiple BOLs in one sitting only saved the first**: root cause was
+  `bol-compose.js`'s review/approve queue silently replaying the same `lbReviewActiveIndex` every
+  time "Make Changes" was reopened, so a second edit intended for a different BOL landed back on
+  the first; the Approve loop then only persisted BOLs carrying `_overrides`, so untouched/later
+  BOLs were silently skipped. Fixed with a `_touched` flag set after each Apply, auto-advance to
+  the next untouched BOL in the batch, and the Approve loop gated on `_touched` instead of
+  `_overrides` (so a fully-reverted edit — now correctly clearing `_overrides` per fix #2 — still
+  gets its cleared value persisted rather than silently skipped). Picker options now show a ✓ for
+  already-edited BOLs; manual jump-to-any-BOL selection still works at any time. Out of scope,
+  left unfixed and flagged: the structurally-identical bug in the `reviewRecords`/`RR`/`rrEdit`
+  path, whose only consumer is the unlinked `logistics/_archived/bol-generator.html`. No DB
+  migration, no API contract change — `render_overrides` stays the same JSON-or-null column.
+  `node --check` clean on all touched files (`bol-shared.js`, `bol-compose.js`, `bol-editor.js`,
+  `index.html`'s inline script). See the companion v2 entry under "Logistics (v2)" for the
+  React-port side of the same three fixes.
 - **P443 — Load builder: customize move no longer leaves an empty slot; REFRESH LOAD renamed
   COMPACT LOAD (logistics-agent).** Root cause: the customize-mode drag-and-drop move removed a
   layer from its source column but never cleaned up the source — when the moved layer was the

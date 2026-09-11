@@ -30,8 +30,17 @@ interface BolEditorModalProps {
 export default function BolEditorModal({ target, onCancel, onSaved }: BolEditorModalProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const [localBols, setLocalBols] = useState<BolRecord[]>([]);
+  const [savedIndices, setSavedIndices] = useState<Set<number>>(new Set());
   const mountRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<BolEditorHandle | null>(null);
+  const localBolsRef = useRef<BolRecord[]>([]);
+  const savedIndicesRef = useRef<Set<number>>(new Set());
+  // True once the currently-mounted load has been Applied successfully (or hasn't been mounted
+  // yet). Guards the picker's onChange -- switching away while this is false would silently
+  // discard whatever the operator has typed for the load on screen (bolEditorEngine's cleanup()
+  // wipes the DOM with no warning).
+  const appliedSinceMountRef = useRef(true);
   // Tracks the last `target` this effect actually mounted for, so a target swap and a picker-
   // driven activeIndex change can share one effect without racing: setting activeIndex in
   // response to a NEW target used to run in a separate effect keyed only on [target], which
@@ -39,6 +48,17 @@ export default function BolEditorModal({ target, onCancel, onSaved }: BolEditorM
   // one pass before the corrected index took effect. Not reachable today (the dashboard always
   // passes index 0), but real for any future caller of a nonzero EditorTarget.index.
   const prevTargetRef = useRef<EditorTarget | null>(null);
+
+  // Resets the per-session shadow state -- ONLY when `target` itself changes (a fresh multi-load
+  // editing session), never on a picker-driven activeIndex change. This is the fix for silently
+  // discarding a different load's progress: activeIndex changing must not reset localBols.
+  useEffect(() => {
+    if (!target) return;
+    localBolsRef.current = target.bols;
+    setLocalBols(target.bols);
+    savedIndicesRef.current = new Set();
+    setSavedIndices(new Set());
+  }, [target]);
 
   useEffect(() => {
     if (!target) return;
@@ -51,10 +71,16 @@ export default function BolEditorModal({ target, onCancel, onSaved }: BolEditorM
         return; // re-run once activeIndex catches up -- never mount on the stale index
       }
     }
-    const bol = target.bols[activeIndex];
+    const targetBols = target.bols;
+    // Prefer the locally-saved copy of this load (if the operator already Applied it once this
+    // session) over the original prop, so switching away and back shows the saved edit rather
+    // than a stale re-derivation from target.bols. Falls back to target.bols before the reset
+    // effect above has populated localBolsRef (e.g. the very first render of a new target).
+    const bol = localBolsRef.current[activeIndex] ?? targetBols[activeIndex];
     const container = mountRef.current;
     if (!bol || !container) return;
 
+    appliedSinceMountRef.current = false;
     let cancelled = false;
 
     async function handleApply(updated: BolRecord) {
@@ -84,8 +110,34 @@ export default function BolEditorModal({ target, onCancel, onSaved }: BolEditorM
           return;
         }
 
+        appliedSinceMountRef.current = true;
         handleRef.current?.finishApply(true);
-        onSaved();
+
+        const savedBol = (data.bol as BolRecord | undefined) ?? updated;
+        const nextLocalBols = [...localBolsRef.current];
+        nextLocalBols[activeIndex] = savedBol;
+        localBolsRef.current = nextLocalBols;
+        setLocalBols(nextLocalBols);
+
+        const nextSaved = new Set(savedIndicesRef.current);
+        nextSaved.add(activeIndex);
+        savedIndicesRef.current = nextSaved;
+        setSavedIndices(nextSaved);
+
+        if (nextSaved.size >= targetBols.length) {
+          onSaved();
+          return;
+        }
+
+        let nextIndex = activeIndex;
+        for (let i = 0; i < targetBols.length; i++) {
+          if (!nextSaved.has(i)) {
+            nextIndex = i;
+            break;
+          }
+        }
+        setNotice(`Load ${activeIndex + 1} saved. Now editing load ${nextIndex + 1} of ${targetBols.length}.`);
+        setActiveIndex(nextIndex);
       } catch {
         setNotice("Network error — could not save changes.");
         handleRef.current?.finishApply(false);
@@ -127,11 +179,18 @@ export default function BolEditorModal({ target, onCancel, onSaved }: BolEditorM
             <select
               className="w-full min-h-[44px] rounded-md border border-[var(--input-border)] bg-[var(--input-bg)] text-text text-sm px-3"
               value={activeIndex}
-              onChange={(e) => setActiveIndex(Number(e.target.value))}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (next === activeIndex) return;
+                if (!appliedSinceMountRef.current) {
+                  if (!window.confirm("You have unsaved changes for this load — discard them?")) return;
+                }
+                setActiveIndex(next);
+              }}
             >
-              {target.bols.map((b, i) => (
+              {(localBols.length ? localBols : target.bols).map((b, i) => (
                 <option key={String(b.id)} value={i}>
-                  {`Load ${b.load_number ?? i + 1} — BOL ${b.bol_number || b.id}`}
+                  {`Load ${b.load_number ?? i + 1} — BOL ${b.bol_number || b.id}${savedIndices.has(i) ? " ✓" : ""}`}
                 </option>
               ))}
             </select>

@@ -58,6 +58,48 @@ window.BolEditor = (function () {
     return '';
   }
 
+  // ── Derive a field's pristine base value, ignoring bol._overrides entirely.
+  //    Used by the Apply handler to diff against the true original, not against
+  //    whatever override happened to be in effect when the editor opened. ──
+
+  function deriveBaseValue(bol, field) {
+    const k = field.overrideKey;
+
+    if (field.type === 'single') {
+      const colMap = {
+        date:         'date',
+        bolNumber:    'bol_number',
+        carrierName:  'carrier_name',
+        trailerNo:    'trailer_no',
+      };
+      return String(bol[colMap[k]] || '');
+    }
+
+    if (field.type === 'shipto') {
+      return BolShared.buildShipToLines(bol).join('\n');
+    }
+
+    if (field.type === 'multiline') {
+      if (k === 'deliveryTime') return bol.delivery_time || '';
+      if (k === 'specialInstr') return bol.special_instructions || '';
+      if (k === 'contactInfo')  return bol.contact_info || [
+        bol.contact_name  ? ('POC: ' + bol.contact_name) : '',
+        bol.contact_phone || '',
+      ].filter(Boolean).join(' ');
+      if (k === 'poNumber') {
+        const v = bol.po_number || bol.poNumber || '';
+        return v ? 'PO: ' + v : '';
+      }
+      if (k === 'commodity') return bol.commodity_description || '';
+    }
+
+    if (field.type === 'scrap') {
+      return bol.is_scrap_pickup === 1 || bol.is_scrap_pickup === true || bol.is_scrap_pickup === '1';
+    }
+
+    return '';
+  }
+
   // ── Yes/No scrap toggle ──
 
   function buildScrapToggle(initVal) {
@@ -343,23 +385,23 @@ window.BolEditor = (function () {
 
         if (field.type === 'single') {
           const val = el.value; // no trim — keep parity with deriveValue's String(col || '')
-          if (val !== initialValues[k]) overrides[k] = val;
+          if (val !== deriveBaseValue(bol, field)) overrides[k] = val;
 
         } else if (field.type === 'shipto') {
           const lines = el.value.split('\n').map(l => l.trimEnd()).filter(l => l.trim()).slice(0, 4);
-          const init  = String(initialValues[k] || '').split('\n').map(l => l.trimEnd()).filter(l => l.trim());
-          if (lines.join('\n') !== init.join('\n')) overrides[k] = lines;
+          const base  = deriveBaseValue(bol, field).split('\n').map(l => l.trimEnd()).filter(l => l.trim()).slice(0, 4);
+          if (lines.join('\n') !== base.join('\n')) overrides[k] = lines;
 
         } else if (field.type === 'multiline') {
           const lines = el.value.split('\n').map(l => l.trimEnd());
           while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
-          const init = String(initialValues[k] || '').split('\n').map(l => l.trimEnd());
-          while (init.length && !init[init.length - 1].trim()) init.pop();
-          if (lines.join('\n') !== init.join('\n')) overrides[k] = lines;
+          const base = deriveBaseValue(bol, field).split('\n').map(l => l.trimEnd());
+          while (base.length && !base[base.length - 1].trim()) base.pop();
+          if (lines.join('\n') !== base.join('\n')) overrides[k] = lines;
 
         } else if (field.type === 'scrap') {
           const val = el.dataset.scrapValue === 'true';
-          if (val !== initialValues[k]) overrides[k] = val;
+          if (val !== deriveBaseValue(bol, field)) overrides[k] = val;
         }
       }
 

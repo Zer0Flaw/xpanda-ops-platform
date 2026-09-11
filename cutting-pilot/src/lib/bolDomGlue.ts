@@ -3,7 +3,7 @@
 // bolShared.ts deliberately dropped this glue when it was ported from logistics/bol-shared.js
 // (P435) because a pure render lib can't assume a browser environment — see that file's header.
 // This file reimplements it for the browser: fetching the template/font assets by URL,
-// merging the three copy-type passes (original/driver/customer) into one combined PDF (the
+// merging the three copy-type passes (driver/customer/original) into one combined PDF (the
 // same packet legacy's generateCombinedCopies/viewBolForJob produce), and the two small DOM
 // helpers (openPdf, confirmNoBolNumber) ported near-verbatim from bol-shared.js.
 import { PDFDocument } from "pdf-lib";
@@ -56,8 +56,8 @@ export interface CombinedBolPdfOptions {
   packingSlipPdfBytes?: ArrayBuffer;
 }
 
-// Renders the same combined packet Generate/View produce in legacy: original -> driver ->
-// customer passes (each a full bolShared.generatePdf call, one page per bolRecord), merged into
+// Renders the same combined packet Generate/View produce in legacy: driver -> customer ->
+// original passes (each a full bolShared.generatePdf call, one page per bolRecord), merged into
 // a single PDF. trackingBaseUrl is always the real page origin — required for the QR's drawn
 // geometry to match legacy's window.location.origin-derived output (see bolShared.ts header).
 export async function buildCombinedBolPdf(
@@ -68,7 +68,7 @@ export async function buildCombinedBolPdf(
   const trackingBaseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const out = await PDFDocument.create();
 
-  for (const copyType of [undefined, "driver", "customer"] as const) {
+  for (const copyType of ["driver", "customer", undefined] as const) {
     const templateBytes = await fetchTemplateBytes(copyType);
     const bytes = await generatePdf(bolRecords, {
       copyType,

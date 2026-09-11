@@ -49,6 +49,8 @@ window.BolShared = (function() {
 
   const PAGE = { width: 612, height: 792 }; // template is fixed US Letter
 
+  const COPY_ORDER = ['driver', 'customer', undefined]; // Driver, Customer, then remaining/original
+
   // Field map — single source of truth for what is editable and how it renders.
   // type: 'single' | 'multiline' | 'shipto' | 'scrap'
   const FIELD_MAP = [
@@ -451,6 +453,7 @@ window.BolShared = (function() {
   return {
     COORDS,
     PAGE,
+    COPY_ORDER,
     FIELD_MAP,
     pickCommodityTier,
     generatePdf,
