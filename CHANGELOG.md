@@ -3682,6 +3682,29 @@ Entries within each module are ordered by prompt # descending (newest first).
 
 ## Job Board
 
+- **P444 — DiversiTech label print: SKU checklist before generating (job-board-agent).** Clicking
+  "🏷️ Print DiversiTech Labels" no longer prints every line item unconditionally — it now opens a
+  new `#diversitech-print-modal` (mirrors the existing `#split-days-modal` pattern) listing each
+  line item with a checkbox (checked by default, Select All/Select None shortcuts), labeled with
+  the exact same string the PDF prints (`diversiTechProductLabel(li)`) plus qty so what's checked
+  matches what comes out of the printer. Confirming filters `job.line_items` down to the checked
+  rows and calls `printDiversiTechLabels(jobId, lineItemsOverride)` — the function's new optional
+  second argument (falls back to the job's full line items when omitted, so existing behavior is
+  unchanged if ever called directly). No changes to `buildDiversiTechLabelsPdf`,
+  `diversiTechComputeBundles`, or the label layout — `diversiTechComputeBundles` already sorts by
+  `sort_order` and resets bundle numbering per SKU on whatever array it's given, so filtering the
+  input needed no bundle-logic changes. The "Generating Labels…" busy state moved from the
+  original trigger button to the modal's own Print button, since that's the button Steve is
+  looking at when he confirms. New i18n keys (`jobs.diversitechPrintTitle/Desc`, `selectAll`,
+  `selectNone`, `printLabels`, `generatingLabels`, `diversitechNoneSelected`) added for en/es/ht.
+  **Investigated but not fixed: the "always shows regardless of customer" button-visibility
+  report.** The `openModal()` guard (`jobs/index.html`, toggles `#modal-print-diversitech.hidden`
+  off `curJob.customer.startsWith('DiversiTech')`) has been unchanged and correct since the P421
+  correction (commit `6425262`) — verified no CSS `[hidden]` override, no duplicate element id, no
+  later code re-unhiding it, and the same guard is present on the `p439-board-edit-modal` worktree.
+  Steve confirmed the symptom appears on every job, not just odd-casing DiversiTech variants, which
+  points to a stale cached copy of `jobs/index.html` rather than a code defect — recommended a hard
+  refresh / clear-site-data before further investigation. No code change made for this item.
 - **Hotfix (unprompted) — `DELETE /api/jobs` now cascades `cutting_lines`/`cutting_sessions`
   (db-api-agent).** The child-delete cascade in `_worker.js/routes/jobs.js` covered
   `loading_photos`/`loading_assignments`/`bols`/`saved_loads`/`shipments`/`job_line_items` but never

@@ -15,9 +15,10 @@
  * regular weight is otherwise preserved exactly as the source file has it: only the
  * header and the SIZE row's value are bold, everything else is regular weight.
  *
- * Usage: printDiversiTechLabels(jobId) — looks the job up in the page's `allJobs`
- * array, builds a multi-page PDF (one page per bundle), and opens it in a new tab
- * for printing.
+ * Usage: printDiversiTechLabels(jobId, lineItemsOverride?) — looks the job up in the page's
+ * `allJobs` array, builds a multi-page PDF (one page per bundle) from either the job's full
+ * line items or the optional pre-filtered subset (P444 SKU checklist, jobs/index.html), and
+ * opens it in a new tab for printing.
  */
 
 const DIVERSITECH_LOGO_URL = '/logo/xpanda-panda-600.png';
@@ -195,18 +196,14 @@ async function buildDiversiTechLabelsPdf(job, lineItems) {
   return doc.save();
 }
 
-async function printDiversiTechLabels(jobId) {
+async function printDiversiTechLabels(jobId, lineItemsOverride) {
   const job = allJobs.find(j => j.id === jobId);
   if (!job) return;
-  const lineItems = Array.isArray(job.line_items) ? job.line_items : [];
+  const lineItems = Array.isArray(lineItemsOverride) ? lineItemsOverride : (Array.isArray(job.line_items) ? job.line_items : []);
   if (!lineItems.length) {
     alert('This job has no line items to print labels for.');
     return;
   }
-
-  const btn = document.getElementById('modal-print-diversitech');
-  const originalLabel = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = 'Generating Labels…'; }
 
   try {
     const pdfBytes = await buildDiversiTechLabelsPdf(job, lineItems);
@@ -221,7 +218,5 @@ async function printDiversiTechLabels(jobId) {
   } catch (e) {
     console.error('DiversiTech labels PDF failed:', e);
     alert('Could not generate DiversiTech labels.');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
   }
 }

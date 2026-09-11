@@ -83,6 +83,13 @@
       viewBol: "View BOL",
       assignShipDays: "Assign Ship Days",
       printDiversitech: "🏷️ Print DiversiTech Labels",
+      diversitechPrintTitle: "Select Labels to Print",
+      diversitechPrintDesc: "Uncheck any SKUs that don't need labels printed.",
+      selectAll: "Select All",
+      selectNone: "Select None",
+      printLabels: "Print Labels",
+      generatingLabels: "Generating Labels…",
+      diversitechNoneSelected: "Select at least one SKU to print.",
 
       // Assigned to / Shift
       assignedTo: "Assigned to",
@@ -387,6 +394,13 @@
       viewBol: "Ver Conocimiento de Embarque",
       assignShipDays: "Asignar Días de Envío",
       printDiversitech: "🏷️ Imprimir Etiquetas DiversiTech",
+      diversitechPrintTitle: "Seleccionar Etiquetas a Imprimir",
+      diversitechPrintDesc: "Desmarque cualquier SKU que no necesite etiquetas impresas.",
+      selectAll: "Seleccionar Todo",
+      selectNone: "Deseleccionar Todo",
+      printLabels: "Imprimir Etiquetas",
+      generatingLabels: "Generando Etiquetas…",
+      diversitechNoneSelected: "Seleccione al menos un SKU para imprimir.",
 
       // Assigned to / Shift
       assignedTo: "Asignado a",
@@ -691,6 +705,13 @@
       viewBol: "Gade BOL",
       assignShipDays: "Bay Jou Ekspedisyon",
       printDiversitech: "🏷️ Enprime Etikèt DiversiTech",
+      diversitechPrintTitle: "Chwazi Etikèt pou Enprime",
+      diversitechPrintDesc: "Dekoche nenpòt SKU ki pa bezwen etikèt enprime.",
+      selectAll: "Chwazi Tout",
+      selectNone: "Pa Chwazi Anyen",
+      printLabels: "Enprime Etikèt",
+      generatingLabels: "N ap Jenere Etikèt…",
+      diversitechNoneSelected: "Chwazi omwen yon SKU pou enprime.",
 
       // Assigned to / Shift
       assignedTo: "Asiyen a",

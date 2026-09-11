@@ -248,6 +248,28 @@
   </div>
 </div>
 
+<div class="jobs-modal-overlay" id="diversitech-print-modal" hidden onclick="if(event.target===this)closeDiversiTechPrintModal()" style="z-index:160;">
+  <div class="jobs-modal-panel" role="dialog" aria-modal="true" aria-labelledby="diversitech-print-title" style="max-width:420px;">
+    <div class="jobs-modal-header">
+      <h2 id="diversitech-print-title" data-i18n="jobs.diversitechPrintTitle">Select Labels to Print</h2>
+      <button class="jobs-modal-close" aria-label="Close" data-i18n-attr="aria-label:jobs.close" onclick="closeDiversiTechPrintModal()">&times;</button>
+    </div>
+    <div class="jobs-modal-body">
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px;" data-i18n="jobs.diversitechPrintDesc">Uncheck any SKUs that don&rsquo;t need labels printed.</p>
+      <div style="display:flex;gap:12px;margin-bottom:8px;">
+        <button type="button" style="background:none;border:none;padding:0;font-size:12px;font-weight:600;color:var(--primary-bg);text-decoration:underline;cursor:pointer;" onclick="setDiversiTechPrintAll(true)" data-i18n="jobs.selectAll">Select All</button>
+        <button type="button" style="background:none;border:none;padding:0;font-size:12px;font-weight:600;color:var(--primary-bg);text-decoration:underline;cursor:pointer;" onclick="setDiversiTechPrintAll(false)" data-i18n="jobs.selectNone">Select None</button>
+      </div>
+      <div id="diversitech-print-rows" style="max-height:320px;overflow-y:auto;"></div>
+      <div id="diversitech-print-error" style="color:#ef4444;font-size:13px;margin-top:8px;" hidden></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">
+        <button class="btn ghost small" onclick="closeDiversiTechPrintModal()" data-i18n="jobs.cancel">Cancel</button>
+        <button class="btn small" id="diversitech-print-confirm" onclick="confirmDiversiTechPrint()" data-i18n="jobs.printLabels">Print Labels</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ Job Modal ══ -->
 <div class="jobs-modal-overlay" id="jobs-modal" hidden>
   <div class="jobs-modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -1523,7 +1545,7 @@ function setupModal() {
   document.getElementById('modal-delete').addEventListener('click', confirmDelete);
   document.getElementById('modal-view-bol').addEventListener('click', () => viewBolForJob(editingJobId));
   document.getElementById('modal-split-days').addEventListener('click', () => openSplitDaysModal(editingJobId));
-  document.getElementById('modal-print-diversitech').addEventListener('click', () => printDiversiTechLabels(editingJobId));
+  document.getElementById('modal-print-diversitech').addEventListener('click', () => openDiversiTechPrintModal(editingJobId));
 
   document.getElementById('f-ship-date').addEventListener('change', (e) => {
     document.getElementById('f-ship-day-display').textContent = getShipDayLabel(e.target.value);
@@ -1638,6 +1660,74 @@ async function saveSplitDays() {
     err.textContent = t('jobs.saveFailed'); err.hidden = false; btn.disabled = false;
   } finally {
     btn.disabled = false;
+  }
+}
+
+function openDiversiTechPrintModal(jobId) {
+  const job = allJobs.find(j => j.id === jobId);
+  if (!job) return;
+  const lineItems = Array.isArray(job.line_items) ? job.line_items : [];
+  if (!lineItems.length) {
+    alert('This job has no line items to print labels for.');
+    return;
+  }
+  const rows = document.getElementById('diversitech-print-rows');
+  const err  = document.getElementById('diversitech-print-error');
+  err.hidden = true;
+  rows.innerHTML = lineItems.map((li, idx) => {
+    const label = diversiTechProductLabel(li) || t('jobs.untitledJob');
+    const qty = Number(li.quantity) || 0;
+    return `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;cursor:pointer;">
+      <input type="checkbox" data-idx="${idx}" checked style="width:18px;height:18px;cursor:pointer;flex-shrink:0;" />
+      <span>${esc(label)} — ${esc(t('jobs.colQty'))}: ${qty}</span>
+    </label>`;
+  }).join('');
+  const modal = document.getElementById('diversitech-print-modal');
+  modal.dataset.jobId = jobId;
+  const confirmBtn = document.getElementById('diversitech-print-confirm');
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = t('jobs.printLabels');
+  modal.hidden = false;
+}
+
+function closeDiversiTechPrintModal() {
+  document.getElementById('diversitech-print-modal').hidden = true;
+}
+
+function setDiversiTechPrintAll(checked) {
+  document.querySelectorAll('#diversitech-print-rows input[type="checkbox"]').forEach(cb => { cb.checked = checked; });
+}
+
+async function confirmDiversiTechPrint() {
+  const modal = document.getElementById('diversitech-print-modal');
+  const jobId = modal.dataset.jobId;
+  const job = allJobs.find(j => j.id === jobId);
+  const err = document.getElementById('diversitech-print-error');
+  const btn = document.getElementById('diversitech-print-confirm');
+  err.hidden = true;
+  if (!job) { closeDiversiTechPrintModal(); return; }
+  const lineItems = Array.isArray(job.line_items) ? job.line_items : [];
+  const checkedIdx = new Set(
+    Array.prototype.map.call(
+      modal.querySelectorAll('input[type="checkbox"]:checked'),
+      cb => Number(cb.dataset.idx)
+    )
+  );
+  const selected = lineItems.filter((li, idx) => checkedIdx.has(idx));
+  if (!selected.length) {
+    err.textContent = t('jobs.diversitechNoneSelected');
+    err.hidden = false;
+    return;
+  }
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = t('jobs.generatingLabels');
+  try {
+    await printDiversiTechLabels(jobId, selected);
+    closeDiversiTechPrintModal();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalLabel;
   }
 }
 
